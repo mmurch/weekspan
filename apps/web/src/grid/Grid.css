@@ -397,3 +397,29 @@
   border: 1px solid var(--ws-hair-strong);
   border-radius: 3px;
 }
+
+/*
+ * Selection: the whole cell fills with the soft blue, but the 2px ring is drawn
+ * ONLY around the chip, never the full cell. That is the design's explicit
+ * decision (#3d) — a full-cell outline in a dense grid reads as a border and
+ * fights the ruling.
+ */
+.ws-cell--selected { background: var(--ws-sel-bg); }
+.ws-cell--selected .ws-chip { outline: 2px solid var(--ws-sel-ring); outline-offset: 0; }
+
+/* An empty selected cell still needs to show where the caret is. */
+.ws-cell--selected:not(:has(.ws-chip))::after {
+  content: '';
+  display: block;
+  height: 25px;
+  border: 1px dashed var(--ws-sel-ring);
+  border-radius: var(--ws-radius-chip);
+  opacity: 0.5;
+}
+
+button.ws-week-close {
+  border: none;
+  cursor: pointer;
+  font: 500 9px/1 'IBM Plex Mono', monospace;
+  padding: 0;
+}

@@ -1,4 +1,14 @@
 import type { CellVM, DayColumn, GridVM, RowVM, WeekBlock } from './viewModel.js'
+import type { IsoDate } from '@weekspan/weekspan-core'
+
+export interface GridInteraction {
+  /** Currently selected cell, or null. */
+  selection?: { itemId: string; date: IsoDate } | null
+  onSelectCell?: (itemId: string, date: IsoDate) => void
+  onContextCell?: (itemId: string, date: IsoDate, x: number, y: number) => void
+  /** Fired by the week close affordance, which appears only on a closeable week. */
+  onCloseOut?: (week: string) => void
+}
 import './Grid.css'
 
 /**
@@ -60,14 +70,29 @@ function DayHeader({ day, isPast }: { day: DayColumn; isPast: boolean }): JSX.El
   )
 }
 
-function WeekHeader({ week }: { week: WeekBlock }): JSX.Element {
+function WeekHeader({
+  week,
+  onCloseOut,
+}: {
+  week: WeekBlock
+  onCloseOut?: (week: string) => void
+}): JSX.Element {
   return (
     <>
       <div className={`ws-head-weeklabel${week.isPast ? ' ws-head-weeklabel--past' : ''}`}>
         <span className="ws-week-id">{week.label}</span>
         <span className="ws-week-range">{week.range}</span>
         {/* Present only on a closeable past week — inert and absent otherwise. */}
-        {week.closeable ? <span className="ws-week-close">×</span> : null}
+        {week.closeable ? (
+          <button
+            className="ws-week-close"
+            type="button"
+            title={`Close out ${week.label}`}
+            onClick={() => onCloseOut?.(week.week)}
+          >
+            ×
+          </button>
+        ) : null}
       </div>
       <div className="ws-head-weekendspacer" />
     </>
@@ -82,13 +107,26 @@ function Chip({ cell }: { cell: CellVM }): JSX.Element | null {
   return <div className={`ws-chip ws-chip--skip${generated}`}>SKIP</div>
 }
 
-function Cell({ cell }: { cell: CellVM }): JSX.Element {
+function Cell({
+  cell,
+  itemId,
+  selected,
+  onSelect,
+  onContext,
+}: {
+  cell: CellVM
+  itemId: string
+  selected: boolean
+  onSelect?: (itemId: string, date: IsoDate) => void
+  onContext?: (itemId: string, date: IsoDate, x: number, y: number) => void
+}): JSX.Element {
   const cls = [
     'ws-cell',
     cell.isWeekend ? 'ws-cell--weekend' : '',
     cell.isPastWeek ? 'ws-cell--past' : '',
     cell.isToday ? 'ws-cell--today' : '',
     cell.isVacation ? 'ws-cell--vacation' : '',
+    selected ? 'ws-cell--selected' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -96,13 +134,22 @@ function Cell({ cell }: { cell: CellVM }): JSX.Element {
   // data-cell-date is what the screenshot harness measures to prove that every
   // cell sharing a date also shares an x-position, even across wrapping rows.
   return (
-    <div className={cls} data-cell-date={cell.date}>
+    <div
+      className={cls}
+      data-cell-date={cell.date}
+      onClick={() => onSelect?.(itemId, cell.date)}
+      onContextMenu={(e) => {
+        if (!onContext) return
+        e.preventDefault()
+        onContext(itemId, cell.date, e.clientX, e.clientY)
+      }}
+    >
       <Chip cell={cell} />
     </div>
   )
 }
 
-function Row({ row }: { row: RowVM }): JSX.Element {
+function Row({ row, interaction }: { row: RowVM; interaction: GridInteraction }): JSX.Element {
   const titleCls = [
     'ws-title',
     row.state === 'finished' ? 'ws-title--finished' : '',
@@ -156,7 +203,16 @@ function Row({ row }: { row: RowVM }): JSX.Element {
         ) : null}
       </div>
       {row.cells.map((cell) => (
-        <Cell cell={cell} key={cell.date} />
+        <Cell
+          cell={cell}
+          itemId={row.id}
+          selected={
+            interaction.selection?.itemId === row.id && interaction.selection?.date === cell.date
+          }
+          {...(interaction.onSelectCell ? { onSelect: interaction.onSelectCell } : {})}
+          {...(interaction.onContextCell ? { onContext: interaction.onContextCell } : {})}
+          key={cell.date}
+        />
       ))}
     </div>
   )
@@ -167,14 +223,18 @@ function kebab(token: string): string {
   return token.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase()
 }
 
-export function Grid({ vm }: { vm: GridVM }): JSX.Element {
+export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): JSX.Element {
   const style = { ['--ws-grid-columns' as string]: columnTemplate(vm.weeks.length) }
 
   return (
     <div className="ws-grid" style={style}>
       <div className="ws-head-item">ITEM</div>
       {vm.weeks.map((week) => (
-        <WeekHeader week={week} key={week.week} />
+        <WeekHeader
+          week={week}
+          {...(interaction.onCloseOut ? { onCloseOut: interaction.onCloseOut } : {})}
+          key={week.week}
+        />
       ))}
 
       <div className="ws-head-blank" />
@@ -185,7 +245,7 @@ export function Grid({ vm }: { vm: GridVM }): JSX.Element {
       )}
 
       {vm.rows.map((row) => (
-        <Row row={row} key={row.id} />
+        <Row row={row} interaction={interaction} key={row.id} />
       ))}
 
       <div className="ws-addrow">

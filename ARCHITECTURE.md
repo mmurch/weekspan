@@ -58,10 +58,19 @@ has a copy.
 
 - **Fonts load from Google Fonts**, so offline the app falls back to system fonts and metrics
   shift. Embedding IBM Plex as base64 would fix it at roughly +150 KB.
-- **Directory-handle persistence across sessions from `file://` is UNVERIFIED.** IndexedDB
-  works, but whether a handle survives a browser restart on a `file://` origin has not been
-  tested. If it does not, the user re-picks the file each session — annoying but not fatal.
-  This must be settled in the file-binding chunk, not assumed.
+- **Handle persistence from `file://` — VERIFIED.** IndexedDB on a `file://` origin survives
+  both a same-tab reload and a full browser restart (`scripts/probe-handle-persistence.mjs`).
+  A stored handle is readable next session, so the user never re-navigates the file picker.
+  They do click once to re-grant permission, since `queryPermission` returns `prompt` rather
+  than `granted` after a restart — that is a browser security rule, not something we can
+  avoid, and `requestPermission` requires a user gesture so it must come from a button.
+
+- **Binding is a DIRECTORY, not a single file.** `showOpenFilePicker` yields a file handle, and
+  a file handle cannot reach its parent (there is no `getParent()`), so writing a sibling file
+  is structurally impossible. Three separate requirements need sibling access:
+  `archive/<week>.json` on close-out, the ledger dropdown listing several `*.weekspan.json`
+  files, and writing `weekspan.schema.json` / `AGENTS.md` beside the file the way
+  `weekspan init` does. The cost is a broader permission prompt, which is worth it.
 
 ## Source of truth & sync
 

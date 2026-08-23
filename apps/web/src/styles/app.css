@@ -209,3 +209,28 @@ textarea {
   cursor: pointer;
   padding: 0;
 }
+
+/* ---- splash and banners ---------------------------------------------- */
+
+.ws-splash {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--ws-surface);
+  color: var(--ws-ink-2);
+  font: 400 13px/1.5 'IBM Plex Sans', sans-serif;
+  text-align: center;
+  padding: 24px;
+}
+
+.ws-banner {
+  flex: none;
+  padding: 6px 16px;
+  background: var(--ws-hl-bg);
+  border-bottom: 1px solid var(--ws-hair-strong);
+  font: 400 11px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}

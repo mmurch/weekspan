@@ -1,0 +1,67 @@
+/*
+ * Cell context menu (design handoff #3d): 190px wide, 7px radius, 1px border,
+ * soft shadow. Uses the shared --ws-* tokens so it repaints correctly across
+ * Paper / Solarized / Warm dark — see src/styles/tokens.css.
+ */
+
+.ws-cellmenu {
+  position: fixed;
+  z-index: 20;
+  width: 190px;
+  padding: 4px;
+  box-sizing: border-box;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-menu);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.ws-cellmenu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--ws-radius-3);
+  background: transparent;
+  color: var(--ws-ink);
+  font: 400 12px/1 'IBM Plex Sans', sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-cellmenu-item:hover,
+.ws-cellmenu-item:focus-visible {
+  background: var(--ws-subtle);
+  outline: none;
+}
+
+.ws-cellmenu-swatch {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: var(--ws-radius-1);
+}
+
+.ws-cellmenu-swatch--done { background: var(--ws-done-bg); }
+.ws-cellmenu-swatch--due { background: var(--ws-due-bg); }
+
+/* Clear produces no chip, so its swatch reads as an outline rather than a fill. */
+.ws-cellmenu-swatch--clear {
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-ink-4);
+  box-sizing: border-box;
+}
+
+.ws-cellmenu-label { flex: 1; }
+
+.ws-cellmenu-key {
+  flex: none;
+  font: 400 9.5px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+  padding: 1px 4px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-1);
+}

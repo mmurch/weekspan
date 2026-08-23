@@ -1,0 +1,108 @@
+/*
+ * Quick capture (⌘K) overlay — design #3c-C.
+ *
+ * The input and its highlight underlay are two stacked elements sharing one
+ * box: the underlay (a plain div with <mark> spans) renders BELOW a
+ * transparent-text real <input> at identical font/size/padding, so the
+ * highlighting appears to live inside the input while the input itself still
+ * owns focus, selection, and the caret. `white-space: pre` on the underlay is
+ * load-bearing — without it, trailing/collapsing whitespace would drift the
+ * underlay out of alignment with the input on every space-ending keystroke.
+ */
+
+.ws-capture-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.ws-capture-panel {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 16px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-5);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  padding: 14px;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.ws-capture-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.ws-capture-underlay,
+.ws-capture-input {
+  box-sizing: border-box;
+  width: 100%;
+  font: 500 15px/1.4 'IBM Plex Sans', system-ui, sans-serif;
+  padding: 8px 2px;
+}
+
+.ws-capture-underlay {
+  position: absolute;
+  inset: 0;
+  white-space: pre;
+  overflow: hidden;
+  color: var(--ws-ink);
+  pointer-events: none;
+}
+
+.ws-capture-input {
+  position: relative;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: transparent;
+  caret-color: var(--ws-ink);
+}
+
+.ws-capture-input::placeholder {
+  color: var(--ws-ink-4);
+}
+
+.ws-capture-mark {
+  background: none;
+  border-radius: 3px;
+  padding: 0 1px;
+  color: inherit;
+}
+
+.ws-capture-mark--due {
+  background: var(--ws-due-bg);
+  color: var(--ws-due-fg);
+}
+
+.ws-capture-mark--project {
+  background: var(--ws-sel-bg);
+  color: var(--ws-sel-ring);
+}
+
+.ws-capture-resolved {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ws-hair);
+  min-height: 1.4em;
+  font: 500 11px/1.4 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+}
+
+.ws-capture-hints {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  font: 500 10px/1.4 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-4);
+}
+
+.ws-capture-hints kbd {
+  font: inherit;
+  color: var(--ws-ink-3);
+}

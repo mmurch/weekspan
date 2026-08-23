@@ -1,0 +1,225 @@
+/*
+ * Close-out panel.
+ *
+ * Uses only `--ws-*` tokens from src/styles/tokens.css so it stays correct
+ * across Paper / Solarized / Warm without any theme-specific rule here.
+ */
+
+.ws-closeout-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.ws-closeout-panel {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-closeout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ws-hair);
+  background: var(--ws-subtle);
+  border-top-left-radius: var(--ws-radius-6);
+  border-top-right-radius: var(--ws-radius-6);
+}
+
+.ws-closeout-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ws-closeout-titletext {
+  font: 600 12.5px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-closeout-week {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ws-ink-3);
+}
+
+.ws-closeout-dismiss {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--ws-radius-2);
+  background: transparent;
+  color: var(--ws-ink-3);
+  font-size: 15px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.ws-closeout-dismiss:hover {
+  background: var(--ws-hair);
+  color: var(--ws-ink);
+}
+
+.ws-closeout-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.ws-closeout-lede {
+  margin: 0;
+  font: 500 12px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-closeout-note {
+  margin: 0;
+  font: 400 11px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-closeout-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.ws-closeout-list--archive li {
+  padding: 5px 8px;
+  border-radius: var(--ws-radius-3);
+  background: var(--ws-subtle);
+  font: 400 11.5px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}
+
+/* ---- blocker groups ---------------------------------------------------
+   The two blocker kinds must stay visually distinct: an explicit due needs
+   to be completed or cleared, a generated recurring occurrence needs a skip
+   (or an auto-close on the next load). Presenting them identically leaves
+   the user unable to tell what to do — this was a real bug fixed in core,
+   see closeoutActions.ts. */
+
+.ws-closeout-group {
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-4);
+  padding: 8px;
+}
+
+.ws-closeout-group--explicit {
+  border-color: color-mix(in oklab, var(--ws-due-fg) 35%, var(--ws-hair-strong));
+  background: color-mix(in oklab, var(--ws-due-bg) 22%, transparent);
+}
+
+.ws-closeout-group--generated {
+  border-style: dashed;
+  background: var(--ws-subtle);
+}
+
+.ws-closeout-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ws-closeout-group-chip {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: var(--ws-radius-2);
+  font: 600 8.5px/1.4 'IBM Plex Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+.ws-closeout-group-chip--due {
+  background: var(--ws-due-bg);
+  color: var(--ws-due-fg);
+}
+
+.ws-closeout-group-chip--generated {
+  background: transparent;
+  border: 1px dashed var(--ws-ink-4);
+  color: var(--ws-ink-3);
+  font-style: italic;
+}
+
+.ws-closeout-group-remedy {
+  font: 400 10.5px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-closeout-blocker {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+}
+
+.ws-closeout-blocker-date {
+  flex: none;
+  font-size: 10px;
+  color: var(--ws-ink-3);
+}
+
+.ws-closeout-blocker-title {
+  font: 400 11.5px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}
+
+/* ---- actions ----------------------------------------------------------- */
+
+.ws-closeout-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ws-closeout-btn {
+  padding: 6px 12px;
+  border-radius: var(--ws-radius-btn);
+  border: 1px solid transparent;
+  font: 500 11.5px/1 'IBM Plex Sans', sans-serif;
+  cursor: pointer;
+}
+
+.ws-closeout-btn--ghost {
+  background: transparent;
+  border-color: var(--ws-hair-strong);
+  color: var(--ws-ink-2);
+}
+
+.ws-closeout-btn--ghost:hover {
+  background: var(--ws-hair);
+}
+
+.ws-closeout-btn--primary {
+  background: var(--ws-active-bg);
+  color: var(--ws-active-fg);
+}
+
+.ws-closeout-btn--primary:hover {
+  opacity: 0.9;
+}

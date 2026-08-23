@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser client. Chrome/Edge only \u2014 File System Access API.",
+  "description": "Browser client. Chrome/Edge only — File System Access API.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "shots": "node scripts/shots.mjs",
     "build:single": "node scripts/build-singlefile.mjs",
-    "probe:file": "node scripts/probe-singlefile.mjs"
+    "probe:file": "node scripts/probe-singlefile.mjs",
+    "probe:handles": "node scripts/probe-handle-persistence.mjs"
   },
   "dependencies": {
     "@weekspan/weekspan-core": "0.1.0",
@@ -22,7 +23,9 @@
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/wicg-file-system-access": "^2023.10.7",
     "@vitejs/plugin-react": "^4.3.1",
+    "fake-indexeddb": "^6.2.5",
     "playwright": "^1.44.1",
     "typescript": "^5.4.5",
     "vite": "^5.3.1",

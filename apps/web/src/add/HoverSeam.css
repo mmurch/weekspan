@@ -1,0 +1,65 @@
+/*
+ * Hover seam — design #3c-A. Sits in the gap between two grid rows. At rest
+ * it takes up a thin sliver of vertical space and shows nothing; on hover (or
+ * keyboard focus, for accessibility — the design's affordance is mouse-first
+ * but nothing should be mouse-only) it reveals a 1px line the width of the
+ * item column with a 15px round `+` at its left end.
+ *
+ * Negative margin pulls the rows above/below together by the seam's own
+ * height so inserting the seam between two grid rows doesn't add visible
+ * space to the row rhythm when it's not hovered.
+ */
+
+.ws-seam {
+  position: relative;
+  z-index: 4;
+  height: 9px;
+  margin: -4.5px 0;
+  grid-column: 1 / -1;
+}
+
+.ws-seam-btn {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: var(--ws-item-col, 360px);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.ws-seam:hover .ws-seam-btn,
+.ws-seam-btn:focus-visible {
+  opacity: 1;
+}
+
+.ws-seam-line {
+  flex: 1;
+  height: 1px;
+  margin-left: 20px;
+  background: var(--ws-sel-ring);
+}
+
+.ws-seam-plus {
+  position: absolute;
+  left: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--ws-sel-ring);
+  color: var(--ws-panel);
+  font: 600 11px/1 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.ws-seam-btn:focus-visible .ws-seam-plus {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 2px;
+}
