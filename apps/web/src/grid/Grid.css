@@ -431,3 +431,7 @@ button.ws-week-close--blocked {
   color: var(--ws-ink-4);
   border: 1px dashed var(--ws-ink-4);
 }
+
+/* touch-action:none stops a touch drag from being stolen by page scroll. */
+.ws-grip { touch-action: none; }
+.ws-grip:active { cursor: grabbing; }

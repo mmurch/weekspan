@@ -172,8 +172,8 @@ describe('dropTargetFor — child reordering is sibling-scoped', () => {
     // must never suggest inserting "inside" the a1/a2/a3 block.
     const a1Rect = rects.get('a1')!
     const target = dropTargetFor(vm, 'parent-a', a1Rect.top, rects)
-    expect(target!.beforeId).not.toMatch(/^a[123]$/)
-    expect(target!.afterId).not.toMatch(/^a[123]$/)
+    // Neither boundary may ever be one of parent-a's own children — that
+    // would put a root "inside" a child's block, i.e. two levels of nesting.
     expect(target).toEqual({ index: vm.rows.findIndex((r) => r.id === 'parent-b'), beforeId: null, afterId: 'parent-b' })
   })
 })

@@ -1,4 +1,5 @@
 import type { CellVM, DayColumn, GridVM, RowVM, WeekBlock } from './viewModel.js'
+import type React from 'react'
 import type { IsoDate } from '@weekspan/weekspan-core'
 
 export interface GridInteraction {
@@ -6,8 +7,10 @@ export interface GridInteraction {
   selection?: { itemId: string; date: IsoDate } | null
   onSelectCell?: (itemId: string, date: IsoDate) => void
   onContextCell?: (itemId: string, date: IsoDate, x: number, y: number) => void
-  /** Fired by the week close affordance, which appears only on a closeable week. */
+  /** Fired by the week close affordance. */
   onCloseOut?: (week: string) => void
+  /** Pointer handlers for the drag grip, from `useDragReorder`. */
+  gripHandlers?: (itemId: string) => { onPointerDown: (e: React.PointerEvent) => void }
 }
 import './Grid.css'
 
@@ -176,7 +179,12 @@ function Row({ row, interaction }: { row: RowVM; interaction: GridInteraction })
 
   return (
     <div className="ws-row" data-row-id={row.id}>
-      <div className="ws-grip">⠿⠿</div>
+      <div
+        className="ws-grip"
+        {...(interaction.gripHandlers ? interaction.gripHandlers(row.id) : {})}
+      >
+        ⠿⠿
+      </div>
       <div className="ws-bar" style={barStyle} />
       <div className={titleCls}>
         {row.depth === 1 ? <span className="ws-elbow" /> : null}

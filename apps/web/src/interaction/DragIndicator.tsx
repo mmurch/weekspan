@@ -36,6 +36,21 @@ function cssEscape(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`)
 }
 
+/**
+ * Rows are `display: contents` — the wrapper generates NO box, so measuring
+ * `[data-row-id]` directly returns {top:0, height:0} for every row and every
+ * drop resolves to the same index. That is a direct consequence of the grid's
+ * alignment technique: making cells join the parent grid is exactly what stops
+ * the row from having geometry of its own.
+ *
+ * So measure a real child instead. `.ws-title` spans the full row height (grid
+ * items stretch to the row), which is precisely the extent a drop needs.
+ */
+function rowBox(row: Element): DOMRect | null {
+  const measurable = row.querySelector('.ws-title') ?? row.querySelector('.ws-cell')
+  return measurable ? measurable.getBoundingClientRect() : null
+}
+
 export function DragIndicator({ vm, state }: DragIndicatorProps): JSX.Element | null {
   const [line, setLine] = useState<LinePosition | null>(null)
 
@@ -56,7 +71,8 @@ export function DragIndicator({ vm, state }: DragIndicatorProps): JSX.Element | 
     let top: number | null = null
     if (targetRow) {
       const el = grid.querySelector(`[data-row-id="${cssEscape(targetRow.id)}"]`)
-      if (el) top = el.getBoundingClientRect().top
+      const r = el ? rowBox(el) : null
+      if (r) top = r.top
     } else {
       // Past the last row: sit right above the add-item affordance, or below
       // the last measured row if that affordance is not present for some reason.
@@ -65,7 +81,8 @@ export function DragIndicator({ vm, state }: DragIndicatorProps): JSX.Element | 
         top = addRow.getBoundingClientRect().top
       } else {
         const last = lastRowElement(grid)
-        if (last) top = last.getBoundingClientRect().bottom
+        const lr = last ? rowBox(last) : null
+        if (lr) top = lr.bottom
       }
     }
 

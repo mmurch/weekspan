@@ -168,6 +168,21 @@ interface DragSession {
 }
 
 /**
+ * Rows are `display: contents` — the wrapper generates NO box, so measuring
+ * `[data-row-id]` directly returns {top:0, height:0} for every row and every
+ * drop resolves to the same index. That is a direct consequence of the grid's
+ * alignment technique: making cells join the parent grid is exactly what stops
+ * the row from having geometry of its own.
+ *
+ * So measure a real child instead. `.ws-title` spans the full row height (grid
+ * items stretch to the row), which is precisely the extent a drop needs.
+ */
+function rowBox(row: Element): DOMRect | null {
+  const measurable = row.querySelector('.ws-title') ?? row.querySelector('.ws-cell')
+  return measurable ? measurable.getBoundingClientRect() : null
+}
+
+/**
  * Measures every rendered row's vertical extent, keyed by `data-row-id` — see
  * `Row` in ../grid/Grid.tsx. Scoped to the nearest `.ws-grid` ancestor so a
  * future second grid on the page (if one ever exists) cannot cross-contaminate.
@@ -178,7 +193,8 @@ function measureRowRects(fromElement: HTMLElement): RowRects {
   scope.querySelectorAll<HTMLElement>('[data-row-id]').forEach((el) => {
     const id = el.dataset['rowId']
     if (!id) return
-    const rect = el.getBoundingClientRect()
+    const rect = rowBox(el)
+    if (!rect) return
     rects.set(id, { top: rect.top, height: rect.height })
   })
   return rects

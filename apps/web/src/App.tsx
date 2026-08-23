@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { weekOf, type Weekspan } from '@weekspan/weekspan-core'
+import { minimalMoveRank, weekOf, type Weekspan } from '@weekspan/weekspan-core'
 import { Grid } from './grid/Grid.js'
 import { buildGrid } from './grid/viewModel.js'
 import { demoWeekspan, emptyWeekspan, stressWeekspan, wrappingWeekspan } from './grid/fixtures.js'
@@ -15,6 +15,8 @@ import { serialize } from '@weekspan/weekspan-core'
 import { resolveKey, applyAction } from './interaction/keymap.js'
 import { reconcileSelection, selectionFromCell, type Selection } from './interaction/selection.js'
 import { CellMenu } from './interaction/CellMenu.js'
+import { useDragReorder } from './interaction/useDragReorder.js'
+import { DragIndicator } from './interaction/DragIndicator.js'
 import { QuickCapture } from './add/QuickCapture.js'
 import { insertItem } from './add/draft.js'
 import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
@@ -114,6 +116,29 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
     if (vm) setSelection((cur) => reconcileSelection(cur, vm))
   }, [vm])
 
+  /**
+   * Commits a drag. All rank maths stays in weekspan-core: the drag only ever
+   * names neighbour ids, and `minimalMoveRank` decides whether that even
+   * requires a write. A drop that already satisfies its constraint writes
+   * nothing, so a dragged-and-returned row leaves no diff in a synced folder.
+   */
+  const handleReorder = useCallback(
+    (itemId: string, beforeId: string | null, afterId: string | null): void => {
+      void mutate((w) => {
+        const moving = w.items.find((i) => i.id === itemId)
+        if (!moving) return null
+        const before = beforeId ? (w.items.find((i) => i.id === beforeId) ?? null) : null
+        const after = afterId ? (w.items.find((i) => i.id === afterId) ?? null) : null
+        const rank = minimalMoveRank(moving, before, after, w.items)
+        if (rank === null) return null
+        return { ...w, items: w.items.map((i) => (i.id === moving.id ? { ...i, rank } : i)) }
+      })
+    },
+    [mutate],
+  )
+
+  const { state: dragState, gripHandlers } = useDragReorder(vm, handleReorder)
+
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -200,7 +225,9 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
               setMenu({ x, y, sel: selectionFromCell(itemId, date) })
             }
             onCloseOut={() => setCloseOutOpen(true)}
+            gripHandlers={gripHandlers}
           />
+          <DragIndicator vm={vm} state={dragState} />
         </div>
         <ShortcutBar count={vm.rows.length} />
       </div>
