@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react'
 
 const KEY = 'weekspan.zoom'
 export const ZOOM_LEVELS = [0.9, 1, 1.1, 1.25, 1.5, 1.75] as const
-export const DEFAULT_ZOOM = 1
+export const DEFAULT_ZOOM = 1.1
 
 export function loadZoom(storage: Storage | undefined = safeStorage()): number {
   try {
@@ -83,7 +83,6 @@ export function ZoomPicker({
 }): JSX.Element {
   return (
     <label className="ws-zoom" title="Interface size">
-      <span className="ws-zoom-glyph">A</span>
       <select
         className="ws-zoom-select"
         value={zoom}
