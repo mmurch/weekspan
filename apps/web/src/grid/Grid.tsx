@@ -194,15 +194,6 @@ export function Grid({ vm }: { vm: GridVM }): JSX.Element {
         <span className="ws-addrow-kbd">N</span>
       </div>
 
-      <div className="ws-foot">
-        <span>D due</span>
-        <span>V done</span>
-        <span>X clear</span>
-        <span>⌥↑↓ reorder</span>
-        <span>⌥←→ move due</span>
-        <span>N new</span>
-        <span className="ws-foot-spacer">{vm.rows.length} items</span>
-      </div>
     </div>
   )
 }

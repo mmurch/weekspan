@@ -164,3 +164,88 @@ export function wrappingWeekspan(today: IsoDate): Weekspan {
 export function emptyWeekspan(_today: IsoDate): Weekspan {
   return createWeekspan()
 }
+
+/**
+ * A deliberately oversized weekspan, for exercising scroll behaviour.
+ *
+ * Pushes both axes at once: ~60 items (vertical overflow past any viewport) with
+ * a mix of one-line and heavily wrapping titles, several sub-items, notes, and
+ * marks spread across the whole window so there is always something to see in
+ * the far-right week columns when scrolled sideways.
+ */
+export function stressWeekspan(today: IsoDate): Weekspan {
+  const projects: Project[] = [
+    { id: 'house', name: 'Weymouth ground floor', colorToken: 'barA' },
+    { id: 'work', name: 'Work', colorToken: 'barB' },
+    { id: 'admin', name: 'Admin', colorToken: 'barC' },
+  ]
+  const projectIds = ['house', 'work', 'admin']
+
+  const SHORT = [
+    'buy milk',
+    'call the plumber',
+    'renew passport',
+    'book dentist',
+    'file expenses',
+    'order printer paper',
+    'return the drill',
+    'pay council tax',
+    'water the plants',
+    'chase the invoice',
+    'update the CV',
+    'back up the laptop',
+  ]
+
+  const LONG = [
+    'coordinate with the downstairs neighbour, the building super, and the HOA about rescheduling the water shutoff for the kitchen renovation, because the plumber can only do Tuesday mornings',
+    'write up the quarterly planning doc covering headcount, the migration timeline, and the three open questions from last week that nobody has answered yet',
+    'work out whether the extractor fan can vent through the side wall or whether it has to go up through the roof, which changes the cost by a factor of about four',
+  ]
+
+  const items: Item[] = []
+  const ranks = rankSequence(70)
+  let r = 0
+
+  for (let i = 0; i < 60; i++) {
+    const isLong = i % 9 === 4
+    const title = isLong
+      ? LONG[i % LONG.length]!
+      : `${SHORT[i % SHORT.length]!} ${Math.floor(i / SHORT.length) + 1}`
+
+    // Marks spread right across the window so far-right columns are not empty.
+    const offset = (i % 25) - 8
+    const marks: Item['marks'] = {}
+    if (i % 5 === 0) marks[addDays(today, offset)] = { kind: 'done' }
+    else if (i % 5 === 1) marks[addDays(today, Math.abs(offset))] = { kind: 'due' }
+    else if (i % 7 === 3) {
+      marks[addDays(today, offset)] = { kind: 'skip', provenance: 'deliberate' }
+      marks[addDays(today, offset + 3)] = { kind: 'due' }
+    }
+
+    const item: Item = {
+      id: `stress-${i}`,
+      title,
+      rank: ranks[r++]!,
+      marks,
+      projectId: projectIds[i % projectIds.length]!,
+      ...(i % 11 === 2
+        ? { notes: '- first supporting note\n- a second, slightly longer supporting note' }
+        : {}),
+    }
+    items.push(item)
+
+    // Every eighth root gets a child, to exercise nesting inside a long list.
+    if (i % 8 === 6) {
+      items.push({
+        id: `stress-${i}-child`,
+        title: `follow up on ${SHORT[i % SHORT.length]!}`,
+        rank: ranks[r++]!,
+        marks: { [addDays(today, (i % 11) - 3)]: { kind: 'due' } },
+        parentId: `stress-${i}`,
+        projectId: projectIds[i % projectIds.length]!,
+      })
+    }
+  }
+
+  return createWeekspan({ projects, items })
+}

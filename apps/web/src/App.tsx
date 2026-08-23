@@ -1,10 +1,12 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { weekOf } from '@weekspan/weekspan-core'
 import { Grid } from './grid/Grid.js'
 import { buildGrid } from './grid/viewModel.js'
-import { demoWeekspan, emptyWeekspan, wrappingWeekspan } from './grid/fixtures.js'
+import { demoWeekspan, emptyWeekspan, stressWeekspan, wrappingWeekspan } from './grid/fixtures.js'
 import { applyTheme, loadTheme, type ThemeChoice } from './theme.js'
 import { Rail } from './Rail.js'
+import { ShortcutBar } from './ShortcutBar.js'
+import { ZoomPicker, loadZoom, useFillWeeks } from './zoom.js'
 
 /**
  * Chunk 1 shell: renders a fixture read-only.
@@ -17,6 +19,7 @@ import { Rail } from './Rail.js'
 const FIXTURES = {
   demo: demoWeekspan,
   wrapping: wrappingWeekspan,
+  stress: stressWeekspan,
   empty: emptyWeekspan,
 } as const
 
@@ -47,10 +50,16 @@ export function App(): JSX.Element {
     applyTheme(isTheme(themeParam) ? themeParam : loadTheme())
   }, [themeParam])
 
+  const [zoom, setZoom] = useState(() => loadZoom())
+
+  // Enough week blocks to fill the horizontal space, recomputed on resize and
+  // when zoom changes (zoom shrinks the effective viewport in CSS pixels).
+  const fillWeeks = useFillWeeks(zoom)
+
   const vm = useMemo(() => {
     const build = FIXTURES[fixtureName] ?? demoWeekspan
-    return buildGrid(build(today), today)
-  }, [fixtureName, today])
+    return buildGrid(build(today), today, fillWeeks)
+  }, [fixtureName, today, fillWeeks])
 
   const projectColors = [...new Set(vm.rows.map((r) => r.projectColorToken).filter(Boolean))]
 
@@ -58,16 +67,25 @@ export function App(): JSX.Element {
     <div className="ws-shell">
       <Rail projectColors={projectColors as string[]} />
       <div className="ws-main">
-        <TopBar today={today} />
-        <div className="ws-scroll">
+        <TopBar today={today} zoom={zoom} onZoom={setZoom} />
+        <div className="ws-scroll" style={{ zoom }}>
           <Grid vm={vm} />
         </div>
+        <ShortcutBar count={vm.rows.length} />
       </div>
     </div>
   )
 }
 
-function TopBar({ today }: { today: string }): JSX.Element {
+function TopBar({
+  today,
+  zoom,
+  onZoom,
+}: {
+  today: string
+  zoom: number
+  onZoom: (z: number) => void
+}): JSX.Element {
   const label = new Date(`${today}T00:00:00Z`)
     .toLocaleDateString('en-GB', {
       weekday: 'short',
@@ -85,6 +103,7 @@ function TopBar({ today }: { today: string }): JSX.Element {
       <span className="ws-seg">Project</span>
       <span className="ws-filter">/ filter</span>
       <span className="ws-topbar-spacer" />
+      <ZoomPicker zoom={zoom} onZoom={onZoom} />
       <span className="ws-date">{label}</span>
       <span className="ws-week">{weekOf(today)}</span>
     </div>

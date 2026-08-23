@@ -17,6 +17,8 @@
  */
 
 .ws-grid {
+  --ws-head-1-h: 24px;
+  --ws-head-2-h: 34px;
   display: grid;
   /* Set by the renderer from the window width: 24px grip, 3px project bar,
      333px title (360 total), then per week 5x38px + 2x19px. */
@@ -32,6 +34,12 @@
 
 .ws-head-item {
   grid-column: span 3;
+  /* Sticky on BOTH axes: this is the corner where the frozen header row and the
+     frozen item column meet, so it must outrank each of them. */
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 5;
   display: flex;
   align-items: flex-end;
   padding: 0 12px 6px 32px;
@@ -43,6 +51,11 @@
 
 .ws-head-weeklabel {
   grid-column: span 5;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: var(--ws-head-1-h);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -79,6 +92,11 @@
 
 .ws-head-weekendspacer {
   grid-column: span 2;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: var(--ws-head-1-h);
+  box-sizing: border-box;
   background: var(--ws-weekend-bg);
   border-bottom: 1px solid var(--ws-hair);
   border-left: 1px solid var(--ws-hair);
@@ -86,11 +104,21 @@
 
 .ws-head-blank {
   grid-column: span 3;
+  position: sticky;
+  top: var(--ws-head-1-h);
+  left: 0;
+  z-index: 5;
   background: var(--ws-subtle);
   border-bottom: 1px solid var(--ws-hair-strong);
 }
 
 .ws-day {
+  /* Second header row: sits directly below the week labels. */
+  position: sticky;
+  top: var(--ws-head-1-h);
+  z-index: 3;
+  height: var(--ws-head-2-h);
+  box-sizing: border-box;
   padding: 4px 0 5px;
   display: flex;
   flex-direction: column;
@@ -157,6 +185,10 @@
 }
 
 .ws-grip {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--ws-surface);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -168,10 +200,22 @@
   user-select: none;
 }
 
-.ws-bar { background: var(--ws-bar-color, transparent); }
+.ws-bar {
+  position: sticky;
+  left: 24px;
+  z-index: 2;
+  background: var(--ws-bar-color, var(--ws-surface));
+}
 .ws-bar--project-view { opacity: 0.55; }
 
 .ws-title {
+  position: sticky;
+  left: 27px;
+  z-index: 2;
+  background: var(--ws-surface);
+  /* Only visible once the grid is scrolled sideways — marks where the frozen
+     column ends and the scrolling days begin. */
+  border-right: 1px solid var(--ws-hair-strong);
   padding: 7px 10px 7px 8px;
   display: flex;
   flex-direction: column;
@@ -203,7 +247,13 @@
   color: var(--ws-ink-3);
 }
 
-.ws-title--child { padding-left: 26px; position: relative; }
+/*
+ * No `position: relative` here. It would override the `position: sticky` on
+ * .ws-title, un-freezing sub-item titles alone — they scrolled away horizontally
+ * while every other row stayed put, letting day cells show through the frozen
+ * column. Sticky already establishes a containing block for the absolute elbow.
+ */
+.ws-title--child { padding-left: 26px; }
 
 .ws-elbow {
   position: absolute;
@@ -303,7 +353,6 @@
 /* ---- footer ---------------------------------------------------------- */
 
 .ws-foot {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -318,6 +367,11 @@
 
 .ws-addrow {
   grid-column: 1 / -1;
+  position: sticky;
+  left: 0;
+  /* Spans the full width, so it must not scroll out of reach sideways. */
+  width: max-content;
+  min-width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;

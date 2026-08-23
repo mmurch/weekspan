@@ -24,6 +24,7 @@ import type {
 } from '@weekspan/weekspan-core'
 import {
   addDays,
+  addWeeks,
   computeWindow,
   daysBetween,
   displayState,
@@ -244,8 +245,46 @@ function buildRow(
  * All windowing, ordering, and cell-resolution rules come from
  * `@weekspan/weekspan-core` — this function only shapes their output.
  */
-export function buildGrid(weekspan: Weekspan, today: IsoDate): GridVM {
-  const window = computeWindow(weekspan, today)
+/**
+ * `minWeeks` extends the window to the RIGHT so the grid can fill a wide screen.
+ *
+ * It never trims: weekspan-core owns the left edge (the oldest unclosed week) and
+ * the four-week floor, and both are domain rules rather than presentation. This
+ * only adds future weeks, which are always safe to show.
+ */
+
+/**
+ * Core's window plus enough trailing future weeks to reach `minWeeks`.
+ *
+ * Built by extending core's result rather than recomputing, so the left edge and
+ * every per-week flag stay exactly what the domain decided.
+ */
+function computeWindowExtended(
+  weekspan: Weekspan,
+  today: IsoDate,
+  minWeeks: number,
+): ReturnType<typeof computeWindow> {
+  const base = computeWindow(weekspan, today)
+  const weeks = [...base.weeks]
+  while (weeks.length < minWeeks) {
+    const next = addWeeks(weeks[weeks.length - 1]!.week, 1)
+    weeks.push({
+      week: next,
+      isPast: false,
+      isCurrent: false,
+      isFuture: true,
+      isOldestUnclosed: false,
+    })
+  }
+  return { ...base, weeks, to: weeks[weeks.length - 1]!.week }
+}
+
+export function buildGrid(weekspan: Weekspan, today: IsoDate, minWeeks = 0): GridVM {
+  const base = computeWindow(weekspan, today)
+  const window =
+    minWeeks > base.weeks.length
+      ? computeWindowExtended(weekspan, today, minWeeks)
+      : base
 
   const { from, to } = windowDateRange(window)
   const span = daysBetween(from, to)

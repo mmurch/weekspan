@@ -171,3 +171,46 @@ textarea {
 }
 
 .ws-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* ---- layout: header frozen vertically, footer pinned to viewport ------ */
+
+.ws-shell { height: 100vh; overflow: hidden; }
+
+.ws-main { height: 100vh; min-height: 0; }
+
+/* The single scroll surface. Sticky header cells and the frozen item column
+   position against THIS box, so it must own both axes. */
+.ws-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ws-topbar { flex: none; }
+.ws-foot { flex: none; }
+
+/* ---- zoom picker ----------------------------------------------------- */
+
+.ws-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-btn);
+  background: var(--ws-subtle);
+}
+
+.ws-zoom-glyph {
+  font: 600 11px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-zoom-select {
+  border: none;
+  background: transparent;
+  color: var(--ws-ink-2);
+  font: 500 10.5px/1 'IBM Plex Sans', sans-serif;
+  cursor: pointer;
+  padding: 0;
+}
