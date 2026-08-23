@@ -18,6 +18,51 @@ must be served over HTTPS or localhost. Native file watching is lost, but pollin
 `FileSystemFileHandle` → `file.lastModified` is cheap and only parses when the timestamp moves.
 (That is fine for *noticing* a change; it is not sufficient for write safety — see "Agent access".)
 
+## Deployment
+
+Two senses of "serverless" are easy to conflate:
+
+- **An application backend** — holds data, runs logic, needs accounts, can go down. We have
+  none, and never will.
+- **Asset delivery** — getting the HTML/JS/CSS into a browser once. Every browser app needs
+  this, and it is not a server in the sense we rejected.
+
+**Primary: a single self-contained HTML file, opened from disk.** `npm run build:single`
+produces `dist-single/weekspan.html` (~170 KB) with all JS and CSS inlined. Double-click it;
+no hosting, no install, no build step for whoever receives it.
+
+Verified working in headless Chrome over `file://`:
+- `file://` **is** a secure context, so `showOpenFilePicker` and `showDirectoryPicker` are
+  available — this was the assumption most likely to sink the whole approach.
+- IndexedDB works, which is where the directory handle and per-device settings live.
+- The grid renders identically to the hosted build.
+
+Three things force the single-file shape, each found by testing rather than assumed:
+1. `<script type="module">` is CORS-blocked on `file://`. The bundle must be a classic IIFE.
+2. Any external `<script src>` or `<link href>` is likewise blocked, so JS and CSS must be
+   inlined rather than referenced.
+3. A classic inline script runs before the body is parsed (module scripts defer), so it must
+   sit immediately before `</body>` or React finds no `#root`.
+
+The inliner uses replacer FUNCTIONS, never string replacements: `String.replace` performs
+`$`-substitution, and a React bundle reliably contains `$'` / `$&` sequences that would splice
+surrounding HTML back into the output. It also escapes `</script>` and hard-fails if the script
+tag was not inlined, rather than shipping a file that breaks only on the user's machine.
+
+**Secondary: static hosting** (GitHub Pages, Netlify, Cloudflare Pages) for convenience. Still
+no backend — a CDN handing out files. Worth having because updates are the one place the single
+file is worse: a hosted URL updates on refresh, whereas a file has to be re-sent to everyone who
+has a copy.
+
+### Known gaps
+
+- **Fonts load from Google Fonts**, so offline the app falls back to system fonts and metrics
+  shift. Embedding IBM Plex as base64 would fix it at roughly +150 KB.
+- **Directory-handle persistence across sessions from `file://` is UNVERIFIED.** IndexedDB
+  works, but whether a handle survives a browser restart on a `file://` origin has not been
+  tested. If it does not, the user re-picks the file each session — annoying but not fatal.
+  This must be settled in the file-binding chunk, not assumed.
+
 ## Source of truth & sync
 
 **The weekspan file is truth.** No server, no backend, no accounts, no auth.

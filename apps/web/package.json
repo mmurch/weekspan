@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser client. Chrome/Edge only — File System Access API.",
+  "description": "Browser client. Chrome/Edge only \u2014 File System Access API.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "shots": "node scripts/shots.mjs"
+    "shots": "node scripts/shots.mjs",
+    "build:single": "node scripts/build-singlefile.mjs",
+    "probe:file": "node scripts/probe-singlefile.mjs"
   },
   "dependencies": {
     "@weekspan/weekspan-core": "0.1.0",

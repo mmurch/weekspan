@@ -6,3 +6,4 @@ dist/
 
 # Personal ledgers must never be committed — this repo is the tool, not the data.
 *.ledger.json
+dist-single/
