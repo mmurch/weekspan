@@ -1,11 +1,11 @@
 /**
- * Generates `ledger.schema.json` from the `Ledger` type in `src/types.ts`.
+ * Generates `weekspan.schema.json` from the `Weekspan` type in `src/types.ts`.
  *
  * This is GENERATED, not hand-written, on purpose: a hand-maintained parallel
  * schema silently drifts from the types it's supposed to describe, which is
  * exactly the failure mode this file exists to avoid. `src/schema.test.ts`
  * shells out to this same script and asserts its output deep-equals the
- * committed `ledger.schema.json`, so editing `types.ts` without re-running
+ * committed `weekspan.schema.json`, so editing `types.ts` without re-running
  * `npm run generate:schema` fails the test suite.
  *
  * This schema describes the CURRENT `SCHEMA_VERSION` shape only (see
@@ -15,7 +15,7 @@
  * that isn't a migration).
  *
  * Usage:
- *   tsx scripts/generate-schema.ts             # writes ./ledger.schema.json
+ *   tsx scripts/generate-schema.ts             # writes ./weekspan.schema.json
  *   tsx scripts/generate-schema.ts <out-path>   # writes to <out-path> instead
  */
 import { fileURLToPath } from 'node:url'
@@ -27,7 +27,7 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = path.resolve(SCRIPT_DIR, '..')
 const TYPES_PATH = path.join(PACKAGE_ROOT, 'src', 'types.ts')
 const TSCONFIG_PATH = path.join(PACKAGE_ROOT, 'tsconfig.json')
-const DEFAULT_OUTPUT_PATH = path.join(PACKAGE_ROOT, 'ledger.schema.json')
+const DEFAULT_OUTPUT_PATH = path.join(PACKAGE_ROOT, 'weekspan.schema.json')
 
 /** `types.ts`: `IsoDate` is `YYYY-MM-DD`, never a timestamp. */
 const ISO_DATE_KEY_PATTERN = '^\\d{4}-\\d{2}-\\d{2}$'
@@ -39,7 +39,7 @@ export function generateSchema(): Schema {
   const config: Config = {
     path: TYPES_PATH,
     tsconfig: TSCONFIG_PATH,
-    type: 'Ledger',
+    type: 'Weekspan',
     expose: 'export',
     topRef: true,
     jsDoc: 'extended',

@@ -1,11 +1,11 @@
 ---
-name: ledger
-description: Read and modify a personal TODO ledger (a *.ledger.json file with a rolling multi-week grid of tasks, due dates, completions and recurring items). Use whenever asked to add, complete, schedule, skip, reorder, list, or close out tasks in a ledger, or when working in a folder containing a *.ledger.json file. Never hand-edit the JSON — this skill wraps the CLI that enforces its invariants.
+name: weekspan
+description: Read and modify a Weekspan task file (a *.weekspan.json file holding a rolling multi-week grid of tasks, due dates, completions and recurring items). Use whenever asked to add, complete, schedule, skip, reorder, list, or close out tasks, or when working in a folder containing a *.weekspan.json file. Never hand-edit the JSON — this skill wraps the CLI that enforces its invariants.
 ---
 
-# Ledger
+# Weekspan
 
-A personal task ledger: one row per task, one column per calendar day. Cells hold a `DUE`
+A personal task grid: one row per task, one column per calendar day. Cells hold a `DUE`
 marker, a completion, or a skip. Backed by a single JSON file that syncs between devices.
 
 ## Always use the CLI
@@ -14,18 +14,18 @@ The file has invariants that are not visible in its shape, and violating them co
 quietly. Never write the JSON directly.
 
 ```bash
-ledger status                      # start here
-ledger list --json                 # machine-readable
-ledger add "call the plumber" --due thu
-ledger done <id>                   # defaults to today
-ledger due  <id> 2026-08-27
-ledger skip <id>                   # deliberate skip
-ledger clear <id>
-ledger move <id> --before <other>
-ledger close-out [--auto]
+weekspan status                      # start here
+weekspan list --json                 # machine-readable
+weekspan add "call the plumber" --due thu
+weekspan done <id>                   # defaults to today
+weekspan due  <id> 2026-08-27
+weekspan skip <id>                   # deliberate skip
+weekspan clear <id>
+weekspan move <id> --before <other>
+weekspan close-out [--auto]
 ```
 
-Target a specific file with `--ledger <path>` or `LEDGER_FILE`. Dates accept `2026-08-27`,
+Target a specific file with `--weekspan <path>` or `WEEKSPAN_FILE`. Dates accept `2026-08-27`,
 `thu`, `today`, `tomorrow`, `+3d`, `-1w`.
 
 ## Output contract
@@ -42,13 +42,13 @@ Exit codes: `0` ok · `2` bad input · `3` refused (domain rule) · `4` file pro
   is completed or skipped. Never write generated occurrences.
 - **Skips carry provenance.** The CLI writes `deliberate`; only `close-out --auto` writes
   `auto`. The distinction is what separates avoidance from absence.
-- **`rank` is a fractional index.** Reorder with `ledger move`, never by editing the value.
+- **`rank` is a fractional index.** Reorder with `weekspan move`, never by editing the value.
 - **Prefer ids over titles.** An ambiguous title errors rather than guessing, which is the
   safe behaviour but costs a round trip.
 
 ## Close-out
 
 A past week closes only when every due in it — explicit or recurring — is resolved.
-`ledger status` names what is blocking and whether each blocker needs completing (explicit)
-or skipping (recurring). `ledger close-out --auto` catches up after a long absence in one
+`weekspan status` names what is blocking and whether each blocker needs completing (explicit)
+or skipping (recurring). `weekspan close-out --auto` catches up after a long absence in one
 step, auto-skipping lapsed recurring occurrences.

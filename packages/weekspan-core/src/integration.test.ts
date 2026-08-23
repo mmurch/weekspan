@@ -22,11 +22,11 @@ import {
   setDue,
 } from './index.js'
 import { AGENT_WARNING, SCHEMA_URI, setSkip, unresolvedInWeek } from './index.js'
-import type { Item, Ledger } from './index.js'
+import type { Item, Weekspan } from './index.js'
 
 const TODAY = '2026-08-26' // Wednesday of 2026-W35 — the day the mockup depicts
 
-function baseLedger(): Ledger {
+function baseWeekspan(): Weekspan {
   const [r1, r2, r3, r4] = rankSequence(4) as [string, string, string, string]
   const items: Item[] = [
     { id: 'tiles', title: 'choose stick-on tiles for kitchen', rank: r1, marks: {}, projectId: 'weymouth' },
@@ -55,17 +55,17 @@ function baseLedger(): Ledger {
 }
 
 describe('a realistic session, end to end', () => {
-  it('round-trips a populated ledger through the file format unchanged', () => {
-    const l = baseLedger()
+  it('round-trips a populated weekspan through the file format unchanged', () => {
+    const l = baseWeekspan()
     // serialize always stamps $schema/$agent, so round-trip is identity only once the
-    // header exists — which it always does for any ledger that came off disk.
+    // header exists — which it always does for any weekspan that came off disk.
     expect(parse(serialize(l))).toEqual({ ...l, $schema: SCHEMA_URI, $agent: AGENT_WARNING })
-    // And is byte-stable, so re-saving an untouched ledger produces no diff.
+    // And is byte-stable, so re-saving an untouched weekspan produces no diff.
     expect(serialize(parse(serialize(l)))).toBe(serialize(l))
   })
 
   it('draws the window the design mockup shows', () => {
-    const w = computeWindow(baseLedger(), TODAY)
+    const w = computeWindow(baseWeekspan(), TODAY)
     expect(w.weeks.map((x) => x.week)).toEqual(['2026-W34', '2026-W35', '2026-W36', '2026-W37'])
     expect(w.currentWeek).toBe('2026-W35')
     expect(w.weeks[0]!.isPast).toBe(true)
@@ -74,7 +74,7 @@ describe('a realistic session, end to end', () => {
   })
 
   it('generates recurring cells without ever writing them to the file', () => {
-    const l = baseLedger()
+    const l = baseWeekspan()
     const plants = l.items.find((i) => i.id === 'plants')!
     // Mondays in the window are generated as due...
     expect(effectiveMark(plants, '2026-08-24')?.kind).toBe('due')
@@ -85,7 +85,7 @@ describe('a realistic session, end to end', () => {
   })
 
   it('chunks work across sessions and finishes on the last one', () => {
-    let tiles = baseLedger().items[0]!
+    let tiles = baseWeekspan().items[0]!
     tiles = setDue(tiles, '2026-08-27')
     tiles = setDone(tiles, '2026-08-25')
     // Worked Tuesday, still due Thursday — not finished yet.
@@ -98,7 +98,7 @@ describe('a realistic session, end to end', () => {
   })
 
   it('blocks close-out on a real due, and releases once it is resolved', () => {
-    const l = baseLedger()
+    const l = baseWeekspan()
     // Put an explicit due in the past week on the passport item.
     l.items = l.items.map((i) =>
       i.id === 'passport' ? setDue(i, '2026-08-20') : i,
@@ -118,7 +118,7 @@ describe('a realistic session, end to end', () => {
   })
 
   it('archives the finished item and keeps the recurring one forever', () => {
-    const l = baseLedger()
+    const l = baseWeekspan()
     l.items = l.items.map((i) =>
       i.id === 'passport'
         ? setDone(i, '2026-08-20')
@@ -127,7 +127,7 @@ describe('a realistic session, end to end', () => {
           : i,
     )
 
-    const { ledger: after, archive } = closeWeek(l, '2026-W34', TODAY)
+    const { weekspan: after, archive } = closeWeek(l, '2026-W34', TODAY)
     expect(archive.items.map((i) => i.id)).toEqual(['passport'])
     expect(after.items.map((i) => i.id).sort()).toEqual(['plants', 'roadmap', 'tiles'])
     expect(after.closedThrough).toBe('2026-W34')
@@ -137,9 +137,9 @@ describe('a realistic session, end to end', () => {
 
   it('returns from a long absence without a wall of clicks', () => {
     // Three months untouched, with only the weekly recurring item outstanding.
-    const l = baseLedger()
+    const l = baseWeekspan()
     l.closedThrough = '2026-W20'
-    const { ledger: after, weeksClosed, autoSkipped } = autoClose(l, TODAY)
+    const { weekspan: after, weeksClosed, autoSkipped } = autoClose(l, TODAY)
 
     expect(weeksClosed.length).toBeGreaterThan(10)
     expect(after.closedThrough).toBe('2026-W34')
@@ -156,7 +156,7 @@ describe('a realistic session, end to end', () => {
   })
 
   it('survives a laptop and a phone editing the same item at once', () => {
-    const base = baseLedger()
+    const base = baseWeekspan()
     const ours = parse(serialize(base))
     const theirs = parse(serialize(base))
 
@@ -168,7 +168,7 @@ describe('a realistic session, end to end', () => {
     expect(conflicts).toHaveLength(0)
     expect(merged.items.find((i) => i.id === 'roadmap')!.marks['2026-08-26']!.kind).toBe('done')
     expect(merged.items.find((i) => i.id === 'passport')!.marks['2026-08-28']!.kind).toBe('due')
-    // And the merged result is still a valid ledger file.
+    // And the merged result is still a valid weekspan file.
     expect(parse(serialize(merged))).toEqual(merged)
   })
 })

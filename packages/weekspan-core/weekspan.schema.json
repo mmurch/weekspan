@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$ref": "#/definitions/Ledger",
+  "$ref": "#/definitions/Weekspan",
   "definitions": {
-    "Ledger": {
+    "Weekspan": {
       "type": "object",
       "properties": {
         "$schema": {
@@ -55,7 +55,7 @@
         "items"
       ],
       "additionalProperties": false,
-      "description": "The working ledger file."
+      "description": "The working weekspan file."
     },
     "IsoWeek": {
       "type": "string",
@@ -207,7 +207,7 @@
         "deliberate",
         "auto"
       ],
-      "description": "How a skip came to exist.\n\n`deliberate` — the user chose to skip while present. `auto`       — auto-close resolved an unresolved recurring occurrence during                catch-up, because returning to a neglected ledger must never                cost more than a glance.\n\nSkip-streak surfacing must count only `deliberate` skips. Without this split, three months away would write a dozen auto-skips onto a weekly item and drown the very signal skip exists to expose."
+      "description": "How a skip came to exist.\n\n`deliberate` — the user chose to skip while present. `auto`       — auto-close resolved an unresolved recurring occurrence during                catch-up, because returning to a neglected weekspan must never                cost more than a glance.\n\nSkip-streak surfacing must count only `deliberate` skips. Without this split, three months away would write a dozen auto-skips onto a weekly item and drown the very signal skip exists to expose."
     },
     "Recurrence": {
       "type": "object",

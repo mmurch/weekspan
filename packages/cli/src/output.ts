@@ -8,14 +8,14 @@
  *
  * The rule that makes both safe to combine: DATA goes to stdout, DIAGNOSTICS
  * (warnings, the human-readable half of an error) go to stderr, and the two
- * streams are never interleaved on purpose. `ledger list --json | jq` must
+ * streams are never interleaved on purpose. `weekspan list --json | jq` must
  * keep working even when a command also calls `warn()` — a warning landing
  * on stdout would corrupt the agent's parse. See `warn()` and the tests
  * below for the regression this guards against.
  */
 import type { Writable } from 'node:stream'
-import type { DisplayState } from '@murch-todo/ledger-core'
-import { rowStyle } from '@murch-todo/ledger-core'
+import type { DisplayState } from '@weekspan/weekspan-core'
+import { rowStyle } from '@weekspan/weekspan-core'
 import type { ExitCode } from './exit.js'
 
 export interface OutputOptions {
@@ -67,7 +67,7 @@ export interface Output {
   table(rows: string[][], headers?: string[]): void
   /**
    * Render `text` the way `state` should read in human mode, using
-   * ledger-core's `rowStyle` rather than reinventing the finished/skipped/open
+   * weekspan-core's `rowStyle` rather than reinventing the finished/skipped/open
    * distinction. Always prefixes a plain-text marker so the three states stay
    * distinguishable even with colour off — the only signal an agent or a
    * piped `less` ever sees. Applies ANSI on top only when this `Output` was

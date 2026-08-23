@@ -1,7 +1,7 @@
 /**
  * Two jobs:
  *
- * 1. Prove `ledger.schema.json` isn't hand-maintained-and-drifting: regenerate
+ * 1. Prove `weekspan.schema.json` isn't hand-maintained-and-drifting: regenerate
  *    it from `types.ts` via the real `scripts/generate-schema.ts` (shelled
  *    out to, so this exercises the exact script `npm run generate:schema`
  *    runs — not a reimplementation of it) and assert the result deep-equals
@@ -9,7 +9,7 @@
  *    fails — that's the whole point of generating rather than hand-writing.
  *
  * 2. Prove the generated schema actually enforces the contract, not just
- *    that it's shaped plausibly: valid ledgers (via the real `serialize()`,
+ *    that it's shaped plausibly: valid weekspans (via the real `serialize()`,
  *    so this is real on-disk output, not hand-built JSON) must pass; a
  *    handful of specific violations of the `Mark` discriminated union, the
  *    `Item` required fields, and the `IsoDate`-keyed `marks` map must fail.
@@ -22,22 +22,22 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Ajv from 'ajv'
 import type { ValidateFunction } from 'ajv'
-import type { Item, Ledger } from './types.js'
+import type { Item, Weekspan } from './types.js'
 import { SCHEMA_VERSION } from './types.js'
 import { serialize } from './serialize.js'
 
 const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const SCHEMA_PATH = path.join(PACKAGE_ROOT, 'ledger.schema.json')
+const SCHEMA_PATH = path.join(PACKAGE_ROOT, 'weekspan.schema.json')
 const GENERATE_SCRIPT = path.join(PACKAGE_ROOT, 'scripts', 'generate-schema.ts')
 // Resolved via Node's own module resolution (walks up node_modules from
 // package.json, so this works whether tsx lands hoisted at the workspace
 // root or local to this package) rather than a hardcoded relative path.
 const TSX_CLI = createRequire(path.join(PACKAGE_ROOT, 'package.json')).resolve('tsx/cli')
 
-describe('ledger.schema.json — generated, not hand-written', () => {
+describe('weekspan.schema.json — generated, not hand-written', () => {
   it('regenerating from types.ts reproduces the committed file exactly', () => {
-    const scratchDir = mkdtempSync(path.join(tmpdir(), 'ledger-schema-drift-'))
-    const scratchOut = path.join(scratchDir, 'ledger.schema.json')
+    const scratchDir = mkdtempSync(path.join(tmpdir(), 'weekspan-schema-drift-'))
+    const scratchOut = path.join(scratchDir, 'weekspan.schema.json')
     try {
       execFileSync(process.execPath, [TSX_CLI, GENERATE_SCRIPT, scratchOut], {
         cwd: PACKAGE_ROOT,
@@ -55,14 +55,14 @@ describe('ledger.schema.json — generated, not hand-written', () => {
   })
 })
 
-describe('ledger.schema.json — validation (ajv)', () => {
+describe('weekspan.schema.json — validation (ajv)', () => {
   function compile(): ValidateFunction {
     const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8'))
     const ajv = new Ajv({ strict: true, allErrors: true })
     return ajv.compile(schema)
   }
 
-  function baseLedger(): Ledger {
+  function baseWeekspan(): Weekspan {
     return {
       version: SCHEMA_VERSION,
       closedThrough: null,
@@ -73,17 +73,17 @@ describe('ledger.schema.json — validation (ajv)', () => {
   }
 
   /** Serialize through the real serializer, then parse back — real on-disk shape. */
-  function toJSON(ledger: Ledger): unknown {
-    return JSON.parse(serialize(ledger))
+  function toJSON(weekspan: Weekspan): unknown {
+    return JSON.parse(serialize(weekspan))
   }
 
-  describe('valid ledgers pass', () => {
-    it('an empty ledger', () => {
+  describe('valid weekspans pass', () => {
+    it('an empty weekspan', () => {
       const validate = compile()
-      expect(validate(toJSON(baseLedger()))).toBe(true)
+      expect(validate(toJSON(baseWeekspan()))).toBe(true)
     })
 
-    it('a ledger with every mark kind, recurrence, links, nesting, and projects', () => {
+    it('a weekspan with every mark kind, recurrence, links, nesting, and projects', () => {
       const validate = compile()
       const items: Item[] = [
         {
@@ -104,26 +104,26 @@ describe('ledger.schema.json — validation (ajv)', () => {
         },
         { id: 'child', title: 'Book flights', rank: 'am', marks: {}, parentId: 'parent' },
       ]
-      const ledger: Ledger = {
-        ...baseLedger(),
+      const weekspan: Weekspan = {
+        ...baseWeekspan(),
         closedThrough: '2026-W30',
         vacationDays: ['2026-07-04', '2026-12-25'],
         projects: [{ id: 'proj-1', name: 'Home', colorToken: 'barA' }],
         items,
       }
-      const out = toJSON(ledger)
+      const out = toJSON(weekspan)
       expect(validate(out)).toBe(true)
     })
 
     it('an item whose optional fields are all explicit null (parentId, projectId, recurrence)', () => {
       const validate = compile()
-      const ledger: Ledger = {
-        ...baseLedger(),
+      const weekspan: Weekspan = {
+        ...baseWeekspan(),
         items: [
           { id: 'a', title: 'A', rank: 'a', marks: {}, parentId: null, projectId: null, recurrence: null },
         ],
       }
-      expect(validate(toJSON(ledger))).toBe(true)
+      expect(validate(toJSON(weekspan))).toBe(true)
     })
   })
 
@@ -133,18 +133,18 @@ describe('ledger.schema.json — validation (ajv)', () => {
     // `provenance` field to omit; a discriminated union can't hold a `due`
     // with `provenance` at all; `rank` is non-optional on `Item`). That's
     // exactly why they're built as loose object literals rather than typed
-    // `Ledger`/`Item` values run through `serialize()` — the schema has to
+    // `Weekspan`/`Item` values run through `serialize()` — the schema has to
     // catch what the type system only catches for callers already using TS.
     // `$schema`/`$agent` are omitted since both are optional in the schema
     // and irrelevant to what each case is testing.
-    function invalidLedgerBase() {
+    function invalidWeekspanBase() {
       return { version: SCHEMA_VERSION, closedThrough: null, vacationDays: [], projects: [] }
     }
 
     it('rejects a skip mark missing provenance', () => {
       const validate = compile()
       const doc = {
-        ...invalidLedgerBase(),
+        ...invalidWeekspanBase(),
         items: [{ id: 'a', title: 'A', rank: 'a', marks: { '2026-08-20': { kind: 'skip' } } }],
       }
       expect(validate(doc)).toBe(false)
@@ -153,7 +153,7 @@ describe('ledger.schema.json — validation (ajv)', () => {
     it('rejects a due mark carrying provenance', () => {
       const validate = compile()
       const doc = {
-        ...invalidLedgerBase(),
+        ...invalidWeekspanBase(),
         items: [
           {
             id: 'a',
@@ -168,14 +168,14 @@ describe('ledger.schema.json — validation (ajv)', () => {
 
     it('rejects an item missing rank', () => {
       const validate = compile()
-      const doc = { ...invalidLedgerBase(), items: [{ id: 'a', title: 'A', marks: {} }] }
+      const doc = { ...invalidWeekspanBase(), items: [{ id: 'a', title: 'A', marks: {} }] }
       expect(validate(doc)).toBe(false)
     })
 
     it('rejects a bad date key in marks', () => {
       const validate = compile()
       const doc = {
-        ...invalidLedgerBase(),
+        ...invalidWeekspanBase(),
         items: [{ id: 'a', title: 'A', rank: 'a', marks: { 'not-a-date': { kind: 'due' } } }],
       }
       expect(validate(doc)).toBe(false)

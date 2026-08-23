@@ -1,4 +1,4 @@
-import type { IsoDate, IsoWeek, Ledger } from './types.js'
+import type { IsoDate, IsoWeek, Weekspan } from './types.js'
 import { addWeeks, weekEnd, weekOf, weekStart, weekRange, weeksBetween } from './dates.js'
 
 /**
@@ -6,11 +6,11 @@ import { addWeeks, weekEnd, weekOf, weekStart, weekRange, weeksBetween } from '.
  * (see ARCHITECTURE.md "The window").
  *
  * There is no back-navigation in v1, so the window is a pure function of
- * `(ledger, today)` rather than any client-side scroll state:
+ * `(weekspan, today)` rather than any client-side scroll state:
  *
  *  - Left edge = the oldest week not yet closed out. `closedThrough` is the
  *    last CLOSED week, so the oldest open one is `closedThrough + 1`. A
- *    fresh ledger (`closedThrough: null`) has never closed anything, so it
+ *    fresh weekspan (`closedThrough: null`) has never closed anything, so it
  *    defaults to the week before the current one — last week dimmed, exactly
  *    as the design draws a new user's grid.
  *
@@ -35,7 +35,7 @@ export interface WindowWeek {
   isOldestUnclosed: boolean
 }
 
-export interface LedgerWindow {
+export interface WeekWindow {
   weeks: WindowWeek[]
   from: IsoWeek
   to: IsoWeek
@@ -51,15 +51,15 @@ export interface LedgerWindow {
  * timezones) must not push the left edge into the future and invert the
  * range. In that case the left edge just IS the current week.
  */
-export function oldestUnclosedWeek(ledger: Ledger, today: IsoDate): IsoWeek {
+export function oldestUnclosedWeek(weekspan: Weekspan, today: IsoDate): IsoWeek {
   const currentWeek = weekOf(today)
-  const naive = ledger.closedThrough === null ? addWeeks(currentWeek, -1) : addWeeks(ledger.closedThrough, 1)
+  const naive = weekspan.closedThrough === null ? addWeeks(currentWeek, -1) : addWeeks(weekspan.closedThrough, 1)
   return weeksBetween(currentWeek, naive) > 0 ? currentWeek : naive
 }
 
-export function computeWindow(ledger: Ledger, today: IsoDate): LedgerWindow {
+export function computeWindow(weekspan: Weekspan, today: IsoDate): WeekWindow {
   const currentWeek = weekOf(today)
-  const from = oldestUnclosedWeek(ledger, today)
+  const from = oldestUnclosedWeek(weekspan, today)
 
   const rightFromCurrent = addWeeks(currentWeek, 2)
   const rightFromLeft = addWeeks(from, 3)
@@ -79,11 +79,11 @@ export function computeWindow(ledger: Ledger, today: IsoDate): LedgerWindow {
   return { weeks, from, to, currentWeek, today }
 }
 
-export function isWeekInWindow(window: LedgerWindow, week: IsoWeek): boolean {
+export function isWeekInWindow(window: WeekWindow, week: IsoWeek): boolean {
   return weeksBetween(window.from, week) >= 0 && weeksBetween(week, window.to) >= 0
 }
 
 /** Monday of the first week through Sunday of the last, for occurrence generation. */
-export function windowDateRange(window: LedgerWindow): { from: IsoDate; to: IsoDate } {
+export function windowDateRange(window: WeekWindow): { from: IsoDate; to: IsoDate } {
   return { from: weekStart(window.from), to: weekEnd(window.to) }
 }

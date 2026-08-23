@@ -1,4 +1,4 @@
-import type { IsoDate } from '@murch-todo/ledger-core'
+import type { IsoDate } from '@weekspan/weekspan-core'
 import { CliError, EXIT } from './exit.js'
 import { parseDateArg, tryParseDateArg } from './dates.js'
 

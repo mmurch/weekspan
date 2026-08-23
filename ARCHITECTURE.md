@@ -1,4 +1,4 @@
-# Architecture Decisions — Personal TODO Ledger
+# Architecture Decisions — Personal TODO Weekspan
 
 Working record of decisions made before implementation. Supersedes the handoff spec
 (`design_handoff_todo_ledger/README.md`) where the two conflict — conflicts are noted inline.
@@ -20,12 +20,12 @@ must be served over HTTPS or localhost. Native file watching is lost, but pollin
 
 ## Source of truth & sync
 
-**The ledger file is truth.** No server, no backend, no accounts, no auth.
+**The weekspan file is truth.** No server, no backend, no accounts, no auth.
 
 Sync is delegated to whatever file-sync the user already runs. On desktop this needs *zero*
-provider integration: `~/Google Drive/work.ledger.json` and `~/Dropbox/personal.ledger.json` are
+provider integration: `~/Google Drive/work.weekspan.json` and `~/Dropbox/personal.weekspan.json` are
 both just paths, and the provider's desktop client syncs them invisibly. One local-filesystem
-adapter covers every provider. A client mounts N ledger paths; the work machine can mount work +
+adapter covers every provider. A client mounts N weekspan paths; the work machine can mount work +
 personal while the home machine mounts personal only.
 
 Provider-specific code becomes necessary only on mobile, where no locally synced folder exists.
@@ -64,7 +64,7 @@ The 1d file-mirror panel can still render an editable **markdown projection insi
 round-trip risk is bounded there, since the client generates and reparses in one step.
 
 File header carries `$schema`, an integer `version` for migrations, and
-`"$agent": "Do not hand-edit; run npx ledger --help or see ./AGENTS.md"`.
+`"$agent": "Do not hand-edit; run npx weekspan --help or see ./AGENTS.md"`.
 
 The `version` integer matters: an old tab can meet a file written by a newer client and must refuse
 rather than silently drop fields.
@@ -117,7 +117,7 @@ the lapsed Tuesday DUE still visible in the past, which is honest).
 
 Weekly / every-other-week / monthly. **Store the rule; generate occurrences for the visible window
 at render time; persist only exceptions** (done, skip, one-off reschedule). A weekly task stays one
-line in the ledger forever, and an agent reads `every 2 weeks on Mon` rather than fifty dates.
+line in the weekspan forever, and an agent reads `every 2 weeks on Mon` rather than fifty dates.
 
 A cell renders as due if there's an explicit due mark *or* the rule generates an occurrence there;
 any explicit mark overrides the generated one.
@@ -162,7 +162,7 @@ before the closing week's end. Without the second clause, closing W35 could rip 
 still has live cells in W36.
 
 **Sequential.** You close the oldest outstanding week; you cannot close W34 while W33 is open. That
-lets a single `closedThrough: "2026-W34"` pointer in the ledger replace a set of closed weeks, and
+lets a single `closedThrough: "2026-W34"` pointer in the weekspan replace a set of closed weeks, and
 means only one week ever shows the `×`. (The handoff implies several weeks could show it at once.)
 
 ### The window
@@ -174,7 +174,7 @@ edge is the current week + 2. When you're caught up that's exactly the four bloc
 No back-navigation in v1. Looking at old items is rare enough to be a later feature, and the archive
 files are readable by hand or by an agent in the meantime.
 
-**Variable width when behind.** Leave a ledger alone for three weeks and the window grows leftward
+**Variable width when behind.** Leave a weekspan alone for three weeks and the window grows leftward
 to cover the outstanding weeks, then shrinks back to four as you close them. The grid nags with real
 backlog instead of hiding it. Six blocks is ~1,740px including the item column, so the grid needs to
 scroll horizontally — worth knowing before laying it out.
@@ -182,7 +182,7 @@ scroll horizontally — worth knowing before laying it out.
 **Auto-close.** A past week closes silently on load if it holds nothing but unresolved recurring
 occurrences, which are auto-marked `skip`. No confirmation, no toll booth.
 
-> **Principle: returning to a neglected ledger must never cost more than a glance.** Switch tools for
+> **Principle: returning to a neglected weekspan must never cost more than a glance.** Switch tools for
 > three months, come back, and the grid should be usable immediately — never a few dozen mandatory
 > clicks. This overrides the forcing function below.
 
@@ -208,12 +208,12 @@ Agents should never hand-edit the file. The invariants (fractional rank, derived
 generated-not-materialized occurrences, one mark per cell) are exactly the kind of thing that gets
 subtly wrong and corrupts quietly.
 
-**`ledger-core`** — pure TypeScript. Parse, serialize, and every mutation, with all invariants
+**`weekspan-core`** — pure TypeScript. Parse, serialize, and every mutation, with all invariants
 enforced. No I/O. Consumed by:
 
 - **the browser app** — File System Access API for I/O
-- **a CLI** — `ledger add "call the plumber" --due thu`, `ledger done <id>`,
-  `ledger close-out`. Node `fs`. This is what agents use. **Built** — see
+- **a CLI** — `weekspan add "call the plumber" --due thu`, `weekspan done <id>`,
+  `weekspan close-out`. Node `fs`. This is what agents use. **Built** — see
   `packages/cli`.
 
 MCP is deferred. The CLI is the substrate either way, and an MCP server would be a thin stdio
@@ -229,7 +229,7 @@ indistinguishable by `stat`. The browser client should do the same rather than t
 
 **Discovery** uses three complementary mechanisms, none individually reliable:
 
-1. `CLAUDE.md` + `AGENTS.md` in the ledger folder — picked up automatically by agents pointed at it.
+1. `CLAUDE.md` + `AGENTS.md` in the weekspan folder — picked up automatically by agents pointed at it.
 2. A skill (folder-level `.claude/skills/` or user-level) that **bundles the CLI**, so it ships the
    tool rather than only describing it. Loads on demand rather than always occupying context.
 3. The self-describing file header, for when an agent meets the file with no folder context.
@@ -239,7 +239,7 @@ is easier than hand-editing, and the file is loud about it.
 
 ## Deferred
 
-- **Local MCP server.** A thin stdio wrapper over `ledger-core`, exposing the tools 1d already
+- **Local MCP server.** A thin stdio wrapper over `weekspan-core`, exposing the tools 1d already
   names: `list_items`, `add_item`, `complete_item`, `reschedule`, `close_out_week`. Deferred because
   ~90% of edits will happen in the browser UI and the agent flows aren't known yet — building the
   tool surface before the flows would be guessing. v1 agent access is `CLAUDE.md` + `AGENTS.md` +
@@ -251,7 +251,7 @@ is easier than hand-editing, and the file is loud about it.
 - **Mobile client.** Needs per-provider API adapters (Drive/Dropbox), since a phone has no locally
   synced folder. Separate problem from the desktop shell — would have been separate under Tauri too.
 - **Multi-user.** Under file-as-truth this is just a shared sync folder, so the door stays open at no
-  schema cost. Open question if it happens: whether a shared ledger has one agreed rank or per-user
+  schema cost. Open question if it happens: whether a shared weekspan has one agreed rank or per-user
   ordering.
 - **SKIP chip** — the cell-level mark is still undrawn. The *row* treatment is decided (below).
 - **Skip-streak surfacing** ("skipped 3 weeks running") — the reason skip exists. Must count only
@@ -263,13 +263,13 @@ is easier than hand-editing, and the file is loud about it.
 
 ## Settled during implementation
 
-- **Mounted-ledger list lives in IndexedDB, per-device**, alongside the theme choice — never in
-  the ledger file. It is a property of *this machine*, which is what lets the work laptop mount
-  two ledgers and the home machine mount one without the two fighting over file contents.
+- **Mounted-weekspan list lives in IndexedDB, per-device**, alongside the theme choice — never in
+  the weekspan file. It is a property of *this machine*, which is what lets the work laptop mount
+  two weekspans and the home machine mount one without the two fighting over file contents.
 - **Stack:** React + TypeScript; CSS custom properties for the token set, since
   `Grid Theme.dc.html` is already a clean token contract; fine-grained state for cell selection
   so an arrow keypress does not re-render the whole grid.
-- **Monorepo** (`packages/ledger-core`, later `packages/cli` and `apps/web`), since three
+- **Monorepo** (`packages/weekspan-core`, later `packages/cli` and `apps/web`), since three
   consumers of one core is the whole architecture.
 
 ## Still open

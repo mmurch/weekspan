@@ -3,7 +3,7 @@
  *
  * Fixture style copied from ../e2e.test.ts: real temp files, `capture()`
  * wraps `createOutput` over in-memory `PassThrough` streams, `ctx()` builds
- * a `CommandContext`, `onDisk()` reads the ledger back from disk.
+ * a `CommandContext`, `onDisk()` reads the weekspan back from disk.
  *
  * Unlike cells.ts, closeout.ts does NOT catch `CliError` — a blocked close
  * throws, so tests assert with `rejects.toThrow` / try-catch on `.code`
@@ -19,7 +19,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import type { ArchiveFile, Ledger } from '@murch-todo/ledger-core'
+import type { ArchiveFile, Weekspan } from '@weekspan/weekspan-core'
 import type { CommandContext } from '../command.js'
 import { archiveDir } from '../config.js'
 import { createOutput, type Output } from '../output.js'
@@ -32,11 +32,11 @@ import { runCloseOut } from './closeout.js'
 const TODAY = '2026-08-26' // Wednesday, 2026-W35
 
 let dir: string
-let ledgerPath: string
+let weekspanPath: string
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'ledger-closeout-'))
-  ledgerPath = path.join(dir, 'l.json')
+  dir = mkdtempSync(path.join(tmpdir(), 'weekspan-closeout-'))
+  weekspanPath = path.join(dir, 'l.json')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -61,19 +61,19 @@ function capture(json = false): Captured {
 }
 
 function ctx(argv: string[], json = false): CommandContext {
-  return { ledgerPath, json, today: TODAY, argv }
+  return { weekspanPath, json, today: TODAY, argv }
 }
 
-function onDisk(): Ledger {
-  return JSON.parse(readFileSync(ledgerPath, 'utf8')) as Ledger
+function onDisk(): Weekspan {
+  return JSON.parse(readFileSync(weekspanPath, 'utf8')) as Weekspan
 }
 
-function writeLedger(l: Ledger): void {
-  writeFileSync(ledgerPath, JSON.stringify(l, null, 2), 'utf8')
+function writeWeekspan(l: Weekspan): void {
+  writeFileSync(weekspanPath, JSON.stringify(l, null, 2), 'utf8')
 }
 
 function archivePathFor(week: string): string {
-  return path.join(archiveDir(ledgerPath), `${week}.json`)
+  return path.join(archiveDir(weekspanPath), `${week}.json`)
 }
 
 function readArchive(week: string): ArchiveFile {
@@ -107,14 +107,14 @@ describe('a week blocked by an explicit due', () => {
     const id = await addItem('pay rent')
     await runCellCommand(ctx([id, '2026-08-20']), 'due', capture().out)
 
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     const err = await expectCliError(() => runCloseOut(ctx([]), capture().out))
 
     expect(err.code).toBe(EXIT.CONFLICT)
     expect(err.message).toContain('pay rent')
     expect(err.message).toContain(id)
     expect(err.message).toMatch(/complete or clear it/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -128,9 +128,9 @@ describe('a week blocked only by a generated recurring occurrence', () => {
     const l = onDisk()
     const item = l.items.find((i) => i.id === id)!
     item.recurrence = { freq: 'weekly', weekday: 4, anchor: '2026-07-01' } // Thursdays
-    writeLedger(l)
+    writeWeekspan(l)
 
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     const err = await expectCliError(() => runCloseOut(ctx([]), capture().out))
 
     expect(err.code).toBe(EXIT.CONFLICT)
@@ -139,7 +139,7 @@ describe('a week blocked only by a generated recurring occurrence', () => {
     expect(err.message).toMatch(/--auto/)
     // The two blocker kinds must read differently — this is the bug the test guards.
     expect(err.message).not.toMatch(/complete or clear it/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -148,15 +148,15 @@ describe('refusing to close the current week', () => {
     await init()
     const l = onDisk()
     l.closedThrough = '2026-W34' // caught up: oldest unclosed is now W35, the current week
-    writeLedger(l)
+    writeWeekspan(l)
 
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     const err = await expectCliError(() => runCloseOut(ctx([]), capture().out))
 
     expect(err.code).toBe(EXIT.CONFLICT)
     expect(err.message).toContain('2026-W35')
     expect(err.message).toMatch(/current week/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -184,7 +184,7 @@ describe('a successful close', () => {
 })
 
 describe('a finished item whose latest mark falls in a later week', () => {
-  it('is not archived and still appears in the ledger afterwards', async () => {
+  it('is not archived and still appears in the weekspan afterwards', async () => {
     await init()
     const id = await addItem('big project')
     // Only mark is `done`, dated in W35 (the current week) — after W34's end
@@ -212,7 +212,7 @@ describe('a recurring item', () => {
     const l = onDisk()
     const item = l.items.find((i) => i.id === id)!
     item.recurrence = { freq: 'weekly', weekday: 4, anchor: '2026-07-01' } // Thursdays
-    writeLedger(l)
+    writeWeekspan(l)
 
     // Resolve the one generated occurrence inside W34 (2026-08-20, Thursday)
     // with an explicit done mark so the week is closeable.
@@ -238,7 +238,7 @@ describe('--auto across a multi-week gap', () => {
     const item = l.items.find((i) => i.id === id)!
     item.recurrence = { freq: 'weekly', weekday: 4, anchor: '2026-07-01' } // Thursdays
     l.closedThrough = '2026-W31' // oldest unclosed becomes W32 -> gap of W32, W33, W34
-    writeLedger(l)
+    writeWeekspan(l)
 
     const c = capture()
     const code = await runCloseOut(ctx(['--auto']), c.out)
@@ -252,7 +252,7 @@ describe('--auto across a multi-week gap', () => {
       expect(existsSync(archivePathFor(week))).toBe(true)
     }
 
-    // Recurring item is never archived: it must still be in the ledger, with
+    // Recurring item is never archived: it must still be in the weekspan, with
     // one auto-skip per Thursday occurrence that fell inside the gap.
     const survivor = after.items.find((i) => i.id === id)!
     expect(survivor).toBeDefined()
@@ -261,31 +261,31 @@ describe('--auto across a multi-week gap', () => {
       expect(survivor.marks[date]).toEqual({ kind: 'skip', provenance: 'auto' })
     }
 
-    const raw = readFileSync(ledgerPath, 'utf8')
+    const raw = readFileSync(weekspanPath, 'utf8')
     expect(raw).toContain('"provenance": "auto"')
     expect(raw).not.toContain('"provenance": "deliberate"')
   })
 })
 
-describe('--auto on an already-current ledger', () => {
+describe('--auto on an already-current weekspan', () => {
   it('is a clean no-op', async () => {
     await init()
     const l = onDisk()
     l.closedThrough = '2026-W34' // caught up: oldest unclosed is W35, the current week
-    writeLedger(l)
-    const before = readFileSync(ledgerPath, 'utf8')
+    writeWeekspan(l)
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     const code = await runCloseOut(ctx(['--auto']), c.out)
     expect(code).toBe(EXIT.OK)
     expect(c.stdout()).toMatch(/Nothing to close/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
-    expect(existsSync(archiveDir(ledgerPath))).toBe(false)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
+    expect(existsSync(archiveDir(weekspanPath))).toBe(false)
   })
 })
 
-describe('archive-before-ledger ordering', () => {
-  it('the archive file exists and its contents match what was removed from the ledger', async () => {
+describe('archive-before-weekspan ordering', () => {
+  it('the archive file exists and its contents match what was removed from the weekspan', async () => {
     await init()
     const keepId = await addItem('ongoing task') // never marked; stays open, never archived
     const goneId = await addItem('clean garage')

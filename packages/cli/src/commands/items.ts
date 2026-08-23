@@ -1,5 +1,5 @@
 /**
- * `ledger add | rm | edit | move` — item lifecycle.
+ * `weekspan add | rm | edit | move` — item lifecycle.
  */
 import { parseArgs } from 'node:util'
 import { randomBytes } from 'node:crypto'
@@ -11,10 +11,10 @@ import {
   siblingsOf,
   validateRecurrence,
   type Item,
-  type Ledger,
+  type Weekspan,
   type Recurrence,
   type RecurrenceFreq,
-} from '@murch-todo/ledger-core'
+} from '@weekspan/weekspan-core'
 import type { Command, CommandContext } from '../command.js'
 import { CliError, EXIT, type ExitCode } from '../exit.js'
 import { createOutput, type Output } from '../output.js'
@@ -22,11 +22,11 @@ import { mutate } from '../session.js'
 import { resolveItem } from '../resolve.js'
 import { parseDateArg } from '../dates.js'
 
-/** Short, URL-safe, collision-checked against the ledger. */
-function newId(ledger: Ledger): string {
+/** Short, URL-safe, collision-checked against the weekspan. */
+function newId(weekspan: Weekspan): string {
   for (let attempt = 0; attempt < 50; attempt++) {
     const id = randomBytes(4).toString('hex').slice(0, 6)
-    if (!ledger.items.some((i) => i.id === id)) return id
+    if (!weekspan.items.some((i) => i.id === id)) return id
   }
   throw new CliError('Could not generate a unique item id.', EXIT.ERROR)
 }
@@ -57,7 +57,7 @@ function buildRecurrence(
 }
 
 /** One level of nesting only — fail before writing, not at the next parse. */
-function assertParentAllowed(ledger: Ledger, parent: Item): void {
+function assertParentAllowed(weekspan: Weekspan, parent: Item): void {
   if (parent.parentId != null) {
     throw new CliError(
       `${parent.id} is already a sub-item; nesting is one level only.`,
@@ -88,16 +88,16 @@ export async function runAdd(
   })
 
   const title = positionals.join(' ').trim()
-  if (!title) throw new CliError('A title is required:  ledger add "buy milk"', EXIT.USAGE)
+  if (!title) throw new CliError('A title is required:  weekspan add "buy milk"', EXIT.USAGE)
 
   let created: Item | undefined
-  const result = await mutate(ctx, out, (ledger) => {
-    const parent = values.parent ? resolveItem(ledger, values.parent as string) : undefined
-    if (parent) assertParentAllowed(ledger, parent)
+  const result = await mutate(ctx, out, (weekspan) => {
+    const parent = values.parent ? resolveItem(weekspan, values.parent as string) : undefined
+    if (parent) assertParentAllowed(weekspan, parent)
 
-    const scope = siblingsOf(ledger.items, parent?.id ?? null)
-    const after = values.after ? resolveItem(ledger, values.after as string) : undefined
-    const before = values.before ? resolveItem(ledger, values.before as string) : undefined
+    const scope = siblingsOf(weekspan.items, parent?.id ?? null)
+    const after = values.after ? resolveItem(weekspan, values.after as string) : undefined
+    const before = values.before ? resolveItem(weekspan, values.before as string) : undefined
 
     let rank: string
     if (after || before) {
@@ -123,7 +123,7 @@ export async function runAdd(
 
     const recurrence = buildRecurrence(values as Record<string, unknown>, ctx.today)
     let item: Item = {
-      id: newId(ledger),
+      id: newId(weekspan),
       title,
       rank,
       marks: {},
@@ -135,7 +135,7 @@ export async function runAdd(
     if (values.due) item = setDue(item, parseDateArg(values.due as string, ctx.today))
 
     created = item
-    return { ...ledger, items: [...ledger.items, item] }
+    return { ...weekspan, items: [...weekspan.items, item] }
   })
 
   out.data(`Added ${created!.id}  ${created!.title}`, {
@@ -160,16 +160,16 @@ export async function runRm(
     allowPositionals: true,
   })
   const query = positionals[0]
-  if (!query) throw new CliError('Which item?  ledger rm <item> --force', EXIT.USAGE)
+  if (!query) throw new CliError('Which item?  weekspan rm <item> --force', EXIT.USAGE)
 
   let removed: Item[] = []
-  await mutate(ctx, out, (ledger) => {
-    const item = resolveItem(ledger, query)
-    const children = ledger.items.filter((i) => i.parentId === item.id)
+  await mutate(ctx, out, (weekspan) => {
+    const item = resolveItem(weekspan, query)
+    const children = weekspan.items.filter((i) => i.parentId === item.id)
 
     if (!values.force) {
       // --force is required in every mode, --json included: AGENTS.md documents
-      // `ledger rm <item> --force` as the contract, and --json is the primary
+      // `weekspan rm <item> --force` as the contract, and --json is the primary
       // interface agents drive this CLI through. Exempting --json here would make
       // the sanctioned agent path the one that deletes without confirmation.
       throw new CliError(`Refusing to delete ${item.id} without --force.`, EXIT.USAGE)
@@ -184,8 +184,8 @@ export async function runRm(
     }
 
     const doomed = new Set([item.id, ...children.map((c) => c.id)])
-    removed = ledger.items.filter((i) => doomed.has(i.id))
-    return { ...ledger, items: ledger.items.filter((i) => !doomed.has(i.id)) }
+    removed = weekspan.items.filter((i) => doomed.has(i.id))
+    return { ...weekspan, items: weekspan.items.filter((i) => !doomed.has(i.id)) }
   })
 
   out.data(
@@ -215,13 +215,13 @@ export async function runEdit(
     allowPositionals: true,
   })
   const query = positionals[0]
-  if (!query) throw new CliError('Which item?  ledger edit <item> --title "..."', EXIT.USAGE)
+  if (!query) throw new CliError('Which item?  weekspan edit <item> --title "..."', EXIT.USAGE)
 
   let edited: Item | undefined
-  await mutate(ctx, out, (ledger) => {
-    const item = resolveItem(ledger, query)
-    const parent = values.parent ? resolveItem(ledger, values.parent as string) : undefined
-    if (parent) assertParentAllowed(ledger, parent)
+  await mutate(ctx, out, (weekspan) => {
+    const item = resolveItem(weekspan, query)
+    const parent = values.parent ? resolveItem(weekspan, values.parent as string) : undefined
+    if (parent) assertParentAllowed(weekspan, parent)
 
     const recurrence = buildRecurrence(values as Record<string, unknown>, ctx.today)
     const next: Item = {
@@ -234,7 +234,7 @@ export async function runEdit(
       ...(values['no-recur'] ? { recurrence: null } : {}),
     }
     edited = next
-    return { ...ledger, items: ledger.items.map((i) => (i.id === item.id ? next : i)) }
+    return { ...weekspan, items: weekspan.items.map((i) => (i.id === item.id ? next : i)) }
   })
 
   out.data(`Updated ${edited!.id}  ${edited!.title}`, {
@@ -255,17 +255,17 @@ export async function runMove(
     allowPositionals: true,
   })
   const query = positionals[0]
-  if (!query) throw new CliError('Which item?  ledger move <item> --before <other>', EXIT.USAGE)
+  if (!query) throw new CliError('Which item?  weekspan move <item> --before <other>', EXIT.USAGE)
   if (!values.before && !values.after) {
     throw new CliError('Give --before <item> or --after <item>.', EXIT.USAGE)
   }
 
   let moved = false
   let subject: Item | undefined
-  await mutate(ctx, out, (ledger) => {
-    const item = resolveItem(ledger, query)
+  await mutate(ctx, out, (weekspan) => {
+    const item = resolveItem(weekspan, query)
     subject = item
-    const target = resolveItem(ledger, (values.before ?? values.after) as string)
+    const target = resolveItem(weekspan, (values.before ?? values.after) as string)
     if (target.id === item.id) {
       throw new CliError('An item cannot be moved relative to itself.', EXIT.USAGE)
     }
@@ -274,13 +274,13 @@ export async function runMove(
     // Otherwise `move b --after a` (with order a, b) computes `after = b`, asking
     // b to sort strictly before itself — impossible, so minimalMoveRank always
     // reported a violation and rewrote the rank on every no-op move.
-    const scope = orderItems(ledger.items).filter((i) => i.id !== item.id)
+    const scope = orderItems(weekspan.items).filter((i) => i.id !== item.id)
     const idx = scope.findIndex((i) => i.id === target.id)
 
     const before = values.after ? target : idx > 0 ? scope[idx - 1]! : null
     const after = values.after ? (scope[idx + 1] ?? null) : target
 
-    const rank = minimalMoveRank(item, before, after, ledger.items)
+    const rank = minimalMoveRank(item, before, after, weekspan.items)
     // null means the constraint is ALREADY satisfied. Writing an identical file
     // just to report success would produce a pointless diff in a synced folder —
     // the no-write case is the entire point of minimalMoveRank.
@@ -288,8 +288,8 @@ export async function runMove(
 
     moved = true
     return {
-      ...ledger,
-      items: ledger.items.map((i) => (i.id === item.id ? { ...i, rank } : i)),
+      ...weekspan,
+      items: weekspan.items.map((i) => (i.id === item.id ? { ...i, rank } : i)),
     }
   })
 
@@ -303,24 +303,24 @@ export async function runMove(
 export const addCommand: Command = {
   name: 'add',
   summary: 'Add an item',
-  usage: 'ledger add "<title>" [--due <date>] [--project <id>] [--parent <item>] [--recur weekly --weekday 1]',
+  usage: 'weekspan add "<title>" [--due <date>] [--project <id>] [--parent <item>] [--recur weekly --weekday 1]',
   run: (ctx) => runAdd(ctx),
 }
 export const rmCommand: Command = {
   name: 'rm',
   summary: 'Remove an item',
-  usage: 'ledger rm <item> --force [--recursive]',
+  usage: 'weekspan rm <item> --force [--recursive]',
   run: (ctx) => runRm(ctx),
 }
 export const editCommand: Command = {
   name: 'edit',
   summary: 'Edit an item',
-  usage: 'ledger edit <item> [--title <t>] [--notes <n>] [--project <id>] [--no-recur]',
+  usage: 'weekspan edit <item> [--title <t>] [--notes <n>] [--project <id>] [--no-recur]',
   run: (ctx) => runEdit(ctx),
 }
 export const moveCommand: Command = {
   name: 'move',
   summary: 'Reorder an item',
-  usage: 'ledger move <item> --before <other> | --after <other>',
+  usage: 'weekspan move <item> --before <other> | --after <other>',
   run: (ctx) => runMove(ctx),
 }

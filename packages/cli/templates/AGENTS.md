@@ -1,23 +1,23 @@
-# This folder holds a TODO ledger
+# This folder holds a Weekspan task file
 
-`*.ledger.json` is a structured task ledger. **Do not hand-edit it.** Use the `ledger` CLI —
+`*.weekspan.json` is a structured task file. **Do not hand-edit it.** Use the `weekspan` CLI —
 it enforces invariants that are not obvious from the file's shape, and getting them wrong
-corrupts the ledger quietly rather than loudly.
+corrupts it quietly rather than loudly.
 
 ## Commands
 
 ```
-ledger status                      # start here: window, counts, what blocks close-out
-ledger list [--project <id>] [--open|--done] [--week <YYYY-Www>]
-ledger add "<title>" [--due <date>] [--project <id>] [--parent <item>]
-ledger done <item> [date]          # date defaults to today
-ledger due  <item> <date>
-ledger skip <item> [date]
-ledger clear <item> [date]
-ledger move <item> --before|--after <other>
-ledger edit <item> [--title ...] [--notes ...]
-ledger rm   <item> --force
-ledger close-out [--auto]
+weekspan status                      # start here: window, counts, what blocks close-out
+weekspan list [--project <id>] [--open|--done] [--week <YYYY-Www>]
+weekspan add "<title>" [--due <date>] [--project <id>] [--parent <item>]
+weekspan done <item> [date]          # date defaults to today
+weekspan due  <item> <date>
+weekspan skip <item> [date]
+weekspan clear <item> [date]
+weekspan move <item> --before|--after <other>
+weekspan edit <item> [--title ...] [--notes ...]
+weekspan rm   <item> --force
+weekspan close-out [--auto]
 ```
 
 Add `--json` to any command for machine-readable output:
@@ -26,12 +26,12 @@ Exit codes: `0` ok, `2` bad input, `3` refused for a domain reason, `4` file pro
 
 Dates accept `2026-08-27`, `thu`, `today`, `tomorrow`, `+3d`, `-1w`.
 
-Point at a specific ledger with `--ledger <path>` or `LEDGER_FILE`.
+Point at a specific weekspan with `--weekspan <path>` or `WEEKSPAN_FILE`.
 
 ## Why not to edit the JSON directly
 
 - **`rank` is a fractional index**, not a position. Renumbering, reusing, or inventing a key
-  breaks ordering permanently. Use `ledger move`.
+  breaks ordering permanently. Use `weekspan move`.
 - **Finished state is derived, never stored.** There is no `done` field. An item is finished
   when its latest non-skip mark is `done`. Writing a status field does nothing.
 - **Recurring occurrences are generated, never stored.** A weekly item has a rule and an empty
@@ -46,5 +46,5 @@ Point at a specific ledger with `--ledger <path>` or `LEDGER_FILE`.
 
 ## Prefer ids
 
-`ledger done <id>` is unambiguous. Title matching is a human convenience; an ambiguous title
+`weekspan done <id>` is unambiguous. Title matching is a human convenience; an ambiguous title
 is an error listing candidates, never a guess.

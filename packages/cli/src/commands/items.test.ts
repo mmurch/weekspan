@@ -1,5 +1,5 @@
 /**
- * Unit tests for `ledger add | rm | edit | move` — item lifecycle.
+ * Unit tests for `weekspan add | rm | edit | move` — item lifecycle.
  *
  * Fixture style copied from `../e2e.test.ts`: real temp files, real commands,
  * real serialized output. `items.ts` is the highest-risk untested module in
@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import { orderItems, type Ledger } from '@murch-todo/ledger-core'
+import { orderItems, type Weekspan } from '@weekspan/weekspan-core'
 import type { CommandContext } from '../command.js'
 import { CliError, EXIT } from '../exit.js'
 import { createOutput, type Output } from '../output.js'
@@ -20,11 +20,11 @@ import { runAdd, runEdit, runMove, runRm } from './items.js'
 const TODAY = '2026-08-26' // Wednesday, 2026-W35
 
 let dir: string
-let ledgerPath: string
+let weekspanPath: string
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'ledger-items-'))
-  ledgerPath = path.join(dir, 'l.json')
+  dir = mkdtempSync(path.join(tmpdir(), 'weekspan-items-'))
+  weekspanPath = path.join(dir, 'l.json')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -49,11 +49,11 @@ function capture(json = false): Captured {
 }
 
 function ctx(argv: string[], json = false): CommandContext {
-  return { ledgerPath, json, today: TODAY, argv }
+  return { weekspanPath, json, today: TODAY, argv }
 }
 
-function onDisk(): Ledger {
-  return JSON.parse(readFileSync(ledgerPath, 'utf8')) as Ledger
+function onDisk(): Weekspan {
+  return JSON.parse(readFileSync(weekspanPath, 'utf8')) as Weekspan
 }
 
 async function init(): Promise<void> {
@@ -151,32 +151,32 @@ describe('add', () => {
 
   it('rejects an invalid recurrence (weekly without --weekday) BEFORE writing', async () => {
     await init()
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     const err = await catchError(() => runAdd(ctx(['water plants', '--recur', 'weekly']), capture().out))
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
     expect((err as Error).message).toMatch(/weekday/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('rejects an invalid recurrence (--weekday 9 is out of range) BEFORE writing', async () => {
     await init()
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     const err = await catchError(() =>
       runAdd(ctx(['water plants', '--recur', 'weekly', '--weekday', '9']), capture().out),
     )
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('rejects an empty title', async () => {
     await init()
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     const err = await catchError(() => runAdd(ctx(['   ']), capture().out))
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -195,12 +195,12 @@ describe('nesting (one level only)', () => {
     const root = onDisk().items[0]!
     await runAdd(ctx(['child', '--parent', root.id]), capture().out)
     const child = onDisk().items[1]!
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const err = await catchError(() => runAdd(ctx(['grandchild', '--parent', child.id]), capture().out))
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -209,28 +209,28 @@ describe('rm', () => {
     await init()
     await runAdd(ctx(['a task']), capture().out)
     const id = onDisk().items[0]!.id
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const err = await catchError(() => runRm(ctx([id]), capture().out))
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('still refuses without --force under --json — AGENTS.md documents --force as always required', async () => {
-    // `ledger rm <item> --force` is the documented contract (templates/AGENTS.md);
+    // `weekspan rm <item> --force` is the documented contract (templates/AGENTS.md);
     // --json only changes how success/failure is reported, it must not change
     // what is allowed. Agents drive the CLI through --json, so a bypass here
     // would make the *primary* agent interface the unsafe one.
     await init()
     await runAdd(ctx(['a task']), capture().out)
     const id = onDisk().items[0]!.id
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const err = await catchError(() => runRm(ctx([id], true), capture(true).out))
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('with --force it removes the item', async () => {
@@ -319,11 +319,11 @@ describe('move', () => {
     await runAdd(ctx(['a']), capture().out)
     await runAdd(ctx(['b']), capture().out)
     const [a, b] = onDisk().items
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     await runMove(ctx([b!.id, '--after', a!.id]), c.out)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
     expect(c.stdout()).toMatch(/already in position/)
   })
 
@@ -331,24 +331,24 @@ describe('move', () => {
     await init()
     await runAdd(ctx(['a']), capture().out)
     const id = onDisk().items[0]!.id
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const err = await catchError(() => runMove(ctx([id, '--after', id]), capture().out))
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('rejects a move with neither --before nor --after', async () => {
     await init()
     await runAdd(ctx(['a']), capture().out)
     const id = onDisk().items[0]!.id
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const err = await catchError(() => runMove(ctx([id]), capture().out))
     expect(err).toBeInstanceOf(CliError)
     expect((err as CliError).code).toBe(EXIT.USAGE)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -365,12 +365,12 @@ describe('--after/--before must name a sibling', () => {
     await runAdd(ctx(['root two']), capture().out)
     const childId = onDisk().items.find((i) => i.parentId === rootId)!.id
 
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     // `childId` is a child of root one; the new item is a root. Different scopes.
     await expect(runAdd(ctx(['new root', '--after', childId]), capture().out)).rejects.toThrow(
       /not a sibling/,
     )
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('still accepts an anchor within the same parent scope', async () => {

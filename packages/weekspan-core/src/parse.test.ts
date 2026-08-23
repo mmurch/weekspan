@@ -1,4 +1,4 @@
-import type { ArchiveFile, Item, Ledger } from './types.js'
+import type { ArchiveFile, Item, Weekspan } from './types.js'
 import { AGENT_WARNING, SCHEMA_VERSION } from './types.js'
 import { serialize, serializeArchive, SCHEMA_URI } from './serialize.js'
 import { parse, parseArchive, ParseError, FutureVersionError } from './parse.js'
@@ -15,16 +15,16 @@ const header = { $schema: SCHEMA_URI, $agent: AGENT_WARNING, version: SCHEMA_VER
 // object, so key order doesn't matter for `toEqual`.
 // ---------------------------------------------------------------------------
 
-interface LedgerFixtures {
-  empty: Ledger
-  noMarks: Ledger
-  manyMarks: Ledger
-  nestedItems: Ledger
-  recurringItems: Ledger
-  nullVsAbsentOptionals: Ledger
+interface WeekspanFixtures {
+  empty: Weekspan
+  noMarks: Weekspan
+  manyMarks: Weekspan
+  nestedItems: Weekspan
+  recurringItems: Weekspan
+  nullVsAbsentOptionals: Weekspan
 }
 
-function ledgerFixtures(): LedgerFixtures {
+function weekspanFixtures(): WeekspanFixtures {
   return {
     empty: {
       ...header,
@@ -148,20 +148,20 @@ function ledgerFixtures(): LedgerFixtures {
 }
 
 describe('round-trip: parse(serialize(x)) deep-equals x', () => {
-  const fixtures = ledgerFixtures()
-  for (const [name, ledger] of Object.entries(fixtures)) {
+  const fixtures = weekspanFixtures()
+  for (const [name, weekspan] of Object.entries(fixtures)) {
     it(name, () => {
-      const roundTripped = parse(serialize(ledger))
-      expect(roundTripped).toEqual(ledger)
+      const roundTripped = parse(serialize(weekspan))
+      expect(roundTripped).toEqual(weekspan)
     })
   }
 })
 
 describe('stability: serialize(parse(serialize(x))) === serialize(x)', () => {
-  const fixtures = ledgerFixtures()
-  for (const [name, ledger] of Object.entries(fixtures)) {
+  const fixtures = weekspanFixtures()
+  for (const [name, weekspan] of Object.entries(fixtures)) {
     it(name, () => {
-      const once = serialize(ledger)
+      const once = serialize(weekspan)
       const twice = serialize(parse(once))
       expect(twice).toBe(once)
     })
@@ -184,7 +184,7 @@ describe('archive round-trip', () => {
 })
 
 describe('parse — rejections', () => {
-  const base = () => JSON.parse(serialize(ledgerFixtures().noMarks))
+  const base = () => JSON.parse(serialize(weekspanFixtures().noMarks))
 
   it('rejects unknown/extra keys at the root', () => {
     const raw = { ...base(), bogus: true }
@@ -264,7 +264,7 @@ describe('parse — rejections', () => {
 })
 
 describe('referential and format checks added at the parse boundary', () => {
-  function ledgerText(over: Record<string, unknown>): string {
+  function weekspanText(over: Record<string, unknown>): string {
     return JSON.stringify({
       version: 1,
       closedThrough: null,
@@ -277,28 +277,28 @@ describe('referential and format checks added at the parse boundary', () => {
 
   it('rejects a rank that violates the never-end-in-zero invariant', () => {
     // "a0" looks plausible but nothing can ever sort between it and "a".
-    const text = ledgerText({
+    const text = weekspanText({
       items: [{ id: 'x', title: 'x', rank: 'a0', marks: {} }],
     })
     expect(() => parse(text)).toThrow(/items\[0\]\.rank/)
   })
 
   it('rejects a rank using characters outside the base62 alphabet', () => {
-    const text = ledgerText({
+    const text = weekspanText({
       items: [{ id: 'x', title: 'x', rank: 'a-b', marks: {} }],
     })
     expect(() => parse(text)).toThrow(/not a valid rank key/)
   })
 
   it('accepts a well-formed rank', () => {
-    const text = ledgerText({
+    const text = weekspanText({
       items: [{ id: 'x', title: 'x', rank: 'aV', marks: {} }],
     })
     expect(parse(text).items[0]!.rank).toBe('aV')
   })
 
   it('rejects a projectId that resolves to no project', () => {
-    const text = ledgerText({
+    const text = weekspanText({
       projects: [{ id: 'p1', name: 'Work', colorToken: 'barA' }],
       items: [{ id: 'x', title: 'x', rank: 'aV', marks: {}, projectId: 'nope' }],
     })
@@ -306,7 +306,7 @@ describe('referential and format checks added at the parse boundary', () => {
   })
 
   it('accepts a projectId that resolves, and a null one', () => {
-    const text = ledgerText({
+    const text = weekspanText({
       projects: [{ id: 'p1', name: 'Work', colorToken: 'barA' }],
       items: [
         { id: 'x', title: 'x', rank: 'aV', marks: {}, projectId: 'p1' },

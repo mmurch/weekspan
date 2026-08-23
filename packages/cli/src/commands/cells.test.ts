@@ -3,14 +3,14 @@
  *
  * Fixture style copied from ../e2e.test.ts: real temp files, `capture()`
  * wraps `createOutput` over in-memory `PassThrough` streams, `ctx()` builds
- * a `CommandContext`, `onDisk()` reads the ledger back from disk.
+ * a `CommandContext`, `onDisk()` reads the weekspan back from disk.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import type { Ledger } from '@murch-todo/ledger-core'
-import { displayState } from '@murch-todo/ledger-core'
+import type { Weekspan } from '@weekspan/weekspan-core'
+import { displayState } from '@weekspan/weekspan-core'
 import type { CommandContext } from '../command.js'
 import { createOutput, type Output } from '../output.js'
 import { EXIT } from '../exit.js'
@@ -21,11 +21,11 @@ import { runCellCommand } from './cells.js'
 const TODAY = '2026-08-26' // Wednesday, 2026-W35
 
 let dir: string
-let ledgerPath: string
+let weekspanPath: string
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'ledger-cells-'))
-  ledgerPath = path.join(dir, 'l.json')
+  dir = mkdtempSync(path.join(tmpdir(), 'weekspan-cells-'))
+  weekspanPath = path.join(dir, 'l.json')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -50,11 +50,11 @@ function capture(json = false): Captured {
 }
 
 function ctx(argv: string[], json = false): CommandContext {
-  return { ledgerPath, json, today: TODAY, argv }
+  return { weekspanPath, json, today: TODAY, argv }
 }
 
-function onDisk(): Ledger {
-  return JSON.parse(readFileSync(ledgerPath, 'utf8')) as Ledger
+function onDisk(): Weekspan {
+  return JSON.parse(readFileSync(weekspanPath, 'utf8')) as Weekspan
 }
 
 async function init(): Promise<void> {
@@ -137,13 +137,13 @@ describe('date defaults to today', () => {
   it('due requires an explicit date and errors without one', async () => {
     await init()
     const id = await addItem()
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     const code = await runCellCommand(ctx([id]), 'due', c.out)
     expect(code).toBe(EXIT.USAGE)
     expect(c.stderr()).toMatch(/Missing date/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -167,7 +167,7 @@ describe('skip provenance', () => {
     const id = await addItem()
     await runCellCommand(ctx([id, '2026-08-26']), 'skip', capture().out)
 
-    const raw = readFileSync(ledgerPath, 'utf8')
+    const raw = readFileSync(weekspanPath, 'utf8')
     expect(raw).toContain('"provenance": "deliberate"')
     expect(raw).not.toContain('"provenance": "auto"')
 
@@ -183,30 +183,30 @@ describe('vacation days', () => {
     const id = await addItem()
     const l = onDisk()
     l.vacationDays = [date]
-    writeFileSync(ledgerPath, JSON.stringify(l, null, 2), 'utf8')
+    writeFileSync(weekspanPath, JSON.stringify(l, null, 2), 'utf8')
     return id
   }
 
   it('due is refused with EXIT.CONFLICT and writes nothing', async () => {
     const id = await withVacationDay('2026-08-27')
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     const code = await runCellCommand(ctx([id, '2026-08-27']), 'due', c.out)
     expect(code).toBe(EXIT.CONFLICT)
     expect(c.stderr()).toMatch(/vacation day/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('done is refused with EXIT.CONFLICT and writes nothing', async () => {
     const id = await withVacationDay('2026-08-27')
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     const code = await runCellCommand(ctx([id, '2026-08-27']), 'done', c.out)
     expect(code).toBe(EXIT.CONFLICT)
     expect(c.stderr()).toMatch(/vacation day/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('skip is still permitted on a vacation day', async () => {
@@ -233,11 +233,11 @@ describe('clear on an unmarked date', () => {
   it('leaves the file byte-identical', async () => {
     await init()
     const id = await addItem()
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const code = await runCellCommand(ctx([id, '2026-08-27']), 'clear', capture().out)
     expect(code).toBe(EXIT.OK)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -245,26 +245,26 @@ describe('resolution failures write nothing', () => {
   it('an unknown item fails without writing', async () => {
     await init()
     await addItem('a task')
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     const code = await runCellCommand(ctx(['no-such-item', '2026-08-27']), 'done', c.out)
     expect(code).toBe(EXIT.USAGE)
     expect(c.stderr()).toMatch(/No item matching/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('an ambiguous item fails without writing', async () => {
     await init()
     await addItem('choose tiles')
     await addItem('choose paint')
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     const code = await runCellCommand(ctx(['choose', '2026-08-27']), 'done', c.out)
     expect(code).toBe(EXIT.USAGE)
     expect(c.stderr()).toMatch(/matches 2 items/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 

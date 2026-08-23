@@ -1,4 +1,4 @@
-import type { Item, Ledger, Recurrence } from './types.js'
+import type { Item, Weekspan, Recurrence } from './types.js'
 import { autoClose, closeWeek, isCloseable, unresolvedInWeek } from './closeout.js'
 import { addWeeks, weekEnd, weekOf, weeksBetween, weekStart } from './dates.js'
 
@@ -15,7 +15,7 @@ function makeItem(id: string, marks: Item['marks'] = {}, recurrence?: Recurrence
   }
 }
 
-function makeLedger(items: Item[], closedThrough: Ledger['closedThrough']): Ledger {
+function makeWeekspan(items: Item[], closedThrough: Weekspan['closedThrough']): Weekspan {
   return {
     version: 1,
     closedThrough,
@@ -40,9 +40,9 @@ describe('unresolvedInWeek / isCloseable', () => {
   it('a past week with an unresolved explicit due is NOT closeable, and the blocker names the item', () => {
     // 2026-W34: Mon 2026-08-17 .. Sun 2026-08-23. Both in the past relative to TODAY.
     const item = makeItem('due-item', { '2026-08-19': { kind: 'due' } })
-    const ledger = makeLedger([item], null) // oldestUnclosedWeek = 2026-W34
+    const weekspan = makeWeekspan([item], null) // oldestUnclosedWeek = 2026-W34
 
-    const result = isCloseable(ledger, '2026-W34', TODAY)
+    const result = isCloseable(weekspan, '2026-W34', TODAY)
     expect(result.closeable).toBe(false)
     expect(result.blockers).toHaveLength(1)
     expect(result.blockers[0]).toEqual({
@@ -55,32 +55,32 @@ describe('unresolvedInWeek / isCloseable', () => {
 
   it('a past week whose dues are all done IS closeable', () => {
     const item = makeItem('done-item', { '2026-08-19': { kind: 'done' } })
-    const ledger = makeLedger([item], null)
+    const weekspan = makeWeekspan([item], null)
 
-    const result = isCloseable(ledger, '2026-W34', TODAY)
+    const result = isCloseable(weekspan, '2026-W34', TODAY)
     expect(result.closeable).toBe(true)
     expect(result.blockers).toHaveLength(0)
   })
 
   it('a past week whose dues are skip IS closeable', () => {
     const item = makeItem('skip-item', { '2026-08-19': { kind: 'skip', provenance: 'deliberate' } })
-    const ledger = makeLedger([item], null)
+    const weekspan = makeWeekspan([item], null)
 
-    const result = isCloseable(ledger, '2026-W34', TODAY)
+    const result = isCloseable(weekspan, '2026-W34', TODAY)
     expect(result.closeable).toBe(true)
     expect(result.blockers).toHaveLength(0)
   })
 
   it('the current week is never closeable, even when fully resolved', () => {
-    const ledger = makeLedger([], null)
-    const result = isCloseable(ledger, CURRENT_WEEK, TODAY)
+    const weekspan = makeWeekspan([], null)
+    const result = isCloseable(weekspan, CURRENT_WEEK, TODAY)
     expect(result.closeable).toBe(false)
     expect(result.blockers).toHaveLength(0)
   })
 
   it('a future week is never closeable', () => {
-    const ledger = makeLedger([], null)
-    const result = isCloseable(ledger, addWeeks(CURRENT_WEEK, 1), TODAY)
+    const weekspan = makeWeekspan([], null)
+    const result = isCloseable(weekspan, addWeeks(CURRENT_WEEK, 1), TODAY)
     expect(result.closeable).toBe(false)
   })
 
@@ -89,8 +89,8 @@ describe('unresolvedInWeek / isCloseable', () => {
     const explicitItem = makeItem('explicit', { '2026-08-19': { kind: 'due' } })
     const recurringItem = makeItem('recurring', {}, rule) // generates 2026-08-18 in W34
 
-    const ledger = makeLedger([explicitItem, recurringItem], null)
-    const { explicitDues, generatedOccurrences } = unresolvedInWeek(ledger, '2026-W34')
+    const weekspan = makeWeekspan([explicitItem, recurringItem], null)
+    const { explicitDues, generatedOccurrences } = unresolvedInWeek(weekspan, '2026-W34')
 
     expect(explicitDues).toEqual([
       { itemId: 'explicit', date: '2026-08-19', title: 'Item explicit', kind: 'explicit' },
@@ -103,23 +103,23 @@ describe('unresolvedInWeek / isCloseable', () => {
 
 describe('closeWeek', () => {
   it('throws when asked to close a week that is not the oldest unclosed one', () => {
-    const ledger = makeLedger([], null) // oldestUnclosedWeek = 2026-W34
-    expect(() => closeWeek(ledger, '2026-W33', TODAY)).toThrow()
+    const weekspan = makeWeekspan([], null) // oldestUnclosedWeek = 2026-W34
+    expect(() => closeWeek(weekspan, '2026-W33', TODAY)).toThrow()
   })
 
   it('throws when the target week is not closeable', () => {
     const item = makeItem('due-item', { '2026-08-19': { kind: 'due' } })
-    const ledger = makeLedger([item], null) // oldest unclosed = 2026-W34, has an unresolved due
-    expect(() => closeWeek(ledger, '2026-W34', TODAY)).toThrow()
+    const weekspan = makeWeekspan([item], null) // oldest unclosed = 2026-W34, has an unresolved due
+    expect(() => closeWeek(weekspan, '2026-W34', TODAY)).toThrow()
   })
 
   it('archives a finished item whose latest mark is in the closing week', () => {
     const item = makeItem('finished', { '2026-08-19': { kind: 'done' } }) // Wed of W34
-    const ledger = makeLedger([item], null) // oldest unclosed = 2026-W34
+    const weekspan = makeWeekspan([item], null) // oldest unclosed = 2026-W34
 
-    const { ledger: newLedger, archive } = closeWeek(ledger, '2026-W34', TODAY)
+    const { weekspan: newWeekspan, archive } = closeWeek(weekspan, '2026-W34', TODAY)
 
-    expect(newLedger.items).toHaveLength(0)
+    expect(newWeekspan.items).toHaveLength(0)
     expect(archive.week).toBe('2026-W34')
     expect(archive.items.map((i) => i.id)).toEqual(['finished'])
   })
@@ -129,12 +129,12 @@ describe('closeWeek', () => {
     // sits in 2026-W34, strictly after the closing week's end, so it must not
     // be archived even though it reads as finished.
     const item = makeItem('later-mark', { '2026-08-19': { kind: 'done' } })
-    const ledger = makeLedger([item], '2026-W32') // oldest unclosed = 2026-W33
+    const weekspan = makeWeekspan([item], '2026-W32') // oldest unclosed = 2026-W33
 
-    const { ledger: newLedger, archive } = closeWeek(ledger, '2026-W33', TODAY)
+    const { weekspan: newWeekspan, archive } = closeWeek(weekspan, '2026-W33', TODAY)
 
     expect(archive.items).toHaveLength(0)
-    expect(newLedger.items.map((i) => i.id)).toEqual(['later-mark'])
+    expect(newWeekspan.items.map((i) => i.id)).toEqual(['later-mark'])
   })
 
   it('never archives a recurring item, even one with many done marks', () => {
@@ -152,24 +152,24 @@ describe('closeWeek', () => {
       },
       rule,
     )
-    const ledger = makeLedger([item], null) // oldest unclosed = 2026-W34
+    const weekspan = makeWeekspan([item], null) // oldest unclosed = 2026-W34
 
-    const { ledger: newLedger, archive } = closeWeek(ledger, '2026-W34', TODAY)
+    const { weekspan: newWeekspan, archive } = closeWeek(weekspan, '2026-W34', TODAY)
 
     expect(archive.items).toHaveLength(0)
-    expect(newLedger.items.map((i) => i.id)).toEqual(['recurring-done'])
+    expect(newWeekspan.items.map((i) => i.id)).toEqual(['recurring-done'])
   })
 
-  it('advances closedThrough and does not mutate the input ledger', () => {
+  it('advances closedThrough and does not mutate the input weekspan', () => {
     const item = makeItem('done-item', { '2026-08-19': { kind: 'done' } })
-    const ledger = deepFreeze(makeLedger([item], null))
+    const weekspan = deepFreeze(makeWeekspan([item], null))
 
-    const { ledger: newLedger } = closeWeek(ledger, '2026-W34', TODAY)
+    const { weekspan: newWeekspan } = closeWeek(weekspan, '2026-W34', TODAY)
 
-    expect(ledger.closedThrough).toBe(null) // input untouched
-    expect(ledger.items).toHaveLength(1)
-    expect(newLedger.closedThrough).toBe('2026-W34')
-    expect(newLedger).not.toBe(ledger)
+    expect(weekspan.closedThrough).toBe(null) // input untouched
+    expect(weekspan.items).toHaveLength(1)
+    expect(newWeekspan.closedThrough).toBe('2026-W34')
+    expect(newWeekspan).not.toBe(weekspan)
   })
 })
 
@@ -178,23 +178,23 @@ describe('autoClose', () => {
     const rule: Recurrence = { freq: 'weekly', weekday: 2, anchor: '2026-01-06' } // Tuesdays
     const item = makeItem('weekly', {}, rule)
     const closedThrough = addWeeks(CURRENT_WEEK, -13) // ~three months back
-    const ledger = makeLedger([item], closedThrough)
+    const weekspan = makeWeekspan([item], closedThrough)
 
     // Weeks closed: closedThrough+1 .. currentWeek-1 inclusive.
     const expectedWeeksClosed = weeksBetween(closedThrough, CURRENT_WEEK) - 1
 
-    const result = autoClose(ledger, TODAY)
+    const result = autoClose(weekspan, TODAY)
 
     expect(result.weeksClosed).toHaveLength(expectedWeeksClosed)
     expect(result.weeksClosed[0]).toBe(addWeeks(closedThrough, 1))
     expect(result.weeksClosed[result.weeksClosed.length - 1]).toBe(addWeeks(CURRENT_WEEK, -1))
-    expect(result.ledger.closedThrough).toBe(addWeeks(CURRENT_WEEK, -1))
+    expect(result.weekspan.closedThrough).toBe(addWeeks(CURRENT_WEEK, -1))
     expect(result.autoSkipped).toBe(expectedWeeksClosed) // exactly one Tuesday occurrence per closed week
     expect(result.archives).toHaveLength(expectedWeeksClosed)
     // Recurring items are never archived.
     expect(result.archives.every((a) => a.items.length === 0)).toBe(true)
 
-    const finalItem = result.ledger.items.find((i) => i.id === 'weekly')!
+    const finalItem = result.weekspan.items.find((i) => i.id === 'weekly')!
     expect(finalItem).toBeDefined()
     const skipMarks = Object.entries(finalItem.marks)
     expect(skipMarks).toHaveLength(expectedWeeksClosed)
@@ -208,35 +208,35 @@ describe('autoClose', () => {
     // explicit due and must block, leaving W34 (and the still-open W35) alone.
     const resolvedInW33 = makeItem('a', { '2026-08-12': { kind: 'done' } }) // Wed of W33
     const dueInW34 = makeItem('b', { '2026-08-19': { kind: 'due' } }) // Wed of W34
-    const ledger = makeLedger([resolvedInW33, dueInW34], '2026-W32')
+    const weekspan = makeWeekspan([resolvedInW33, dueInW34], '2026-W32')
 
-    const result = autoClose(ledger, TODAY)
+    const result = autoClose(weekspan, TODAY)
 
     expect(result.weeksClosed).toEqual(['2026-W33'])
-    expect(result.ledger.closedThrough).toBe('2026-W33')
+    expect(result.weekspan.closedThrough).toBe('2026-W33')
     expect(result.autoSkipped).toBe(0)
 
     // The finished, non-recurring item from W33 was archived away...
     expect(result.archives).toHaveLength(1)
     expect(result.archives[0]!.items.map((i) => i.id)).toEqual(['a'])
-    // ...but the blocked item stays in the working ledger, untouched.
-    expect(result.ledger.items.map((i) => i.id)).toEqual(['b'])
-    expect(result.ledger.items[0]!.marks['2026-08-19']).toEqual({ kind: 'due' })
+    // ...but the blocked item stays in the working weekspan, untouched.
+    expect(result.weekspan.items.map((i) => i.id)).toEqual(['b'])
+    expect(result.weekspan.items[0]!.marks['2026-08-19']).toEqual({ kind: 'due' })
   })
 
-  it('is a no-op when the ledger is already caught up to the current week', () => {
-    const ledger = makeLedger([], addWeeks(CURRENT_WEEK, -1)) // oldest unclosed = current week
-    const result = autoClose(ledger, TODAY)
+  it('is a no-op when the weekspan is already caught up to the current week', () => {
+    const weekspan = makeWeekspan([], addWeeks(CURRENT_WEEK, -1)) // oldest unclosed = current week
+    const result = autoClose(weekspan, TODAY)
 
     expect(result.weeksClosed).toHaveLength(0)
     expect(result.archives).toHaveLength(0)
     expect(result.autoSkipped).toBe(0)
-    expect(result.ledger.closedThrough).toBe(addWeeks(CURRENT_WEEK, -1))
+    expect(result.weekspan.closedThrough).toBe(addWeeks(CURRENT_WEEK, -1))
   })
 
   it('terminates when closedThrough is set far in the future rather than looping', () => {
-    const ledger = makeLedger([], '2099-W01')
-    const result = autoClose(ledger, TODAY)
+    const weekspan = makeWeekspan([], '2099-W01')
+    const result = autoClose(weekspan, TODAY)
 
     // window.ts clamps the left edge to the current week when closedThrough
     // is already at or beyond it, so there is nothing to auto-close.
@@ -244,16 +244,16 @@ describe('autoClose', () => {
     expect(result.autoSkipped).toBe(0)
   })
 
-  it('does not mutate the input ledger', () => {
+  it('does not mutate the input weekspan', () => {
     const rule: Recurrence = { freq: 'weekly', weekday: 2, anchor: '2026-08-04' }
     const item = makeItem('weekly', {}, rule)
-    const ledger = deepFreeze(makeLedger([item], '2026-W33'))
+    const weekspan = deepFreeze(makeWeekspan([item], '2026-W33'))
 
-    const result = autoClose(ledger, TODAY)
+    const result = autoClose(weekspan, TODAY)
 
-    expect(ledger.closedThrough).toBe('2026-W33')
-    expect(Object.keys(ledger.items[0]!.marks)).toHaveLength(0)
-    expect(result.ledger).not.toBe(ledger)
+    expect(weekspan.closedThrough).toBe('2026-W33')
+    expect(Object.keys(weekspan.items[0]!.marks)).toHaveLength(0)
+    expect(result.weekspan).not.toBe(weekspan)
   })
 })
 
@@ -271,9 +271,9 @@ describe('blocker reporting stays consistent with closeable', () => {
     // them, so a caller saw "cannot close, nothing is blocking" and closeWeek threw
     // "it is the current or a future week" for a week that was neither.
     const rule = { freq: 'weekly', weekday: 2, anchor: '2026-01-06' } as const
-    const ledger = makeLedger([makeItem('recurring', {}, rule)], null)
+    const weekspan = makeWeekspan([makeItem('recurring', {}, rule)], null)
 
-    const result = isCloseable(ledger, '2026-W34', TODAY)
+    const result = isCloseable(weekspan, '2026-W34', TODAY)
     expect(result.closeable).toBe(false)
     expect(result.blockers).not.toHaveLength(0)
     expect(result.blockers.every((b) => b.kind === 'generated')).toBe(true)
@@ -281,9 +281,9 @@ describe('blocker reporting stays consistent with closeable', () => {
 
   it('never reports closeable:false with an empty blocker list', () => {
     const rule = { freq: 'weekly', weekday: 2, anchor: '2026-01-06' } as const
-    const ledger = makeLedger([makeItem('recurring', {}, rule)], null)
+    const weekspan = makeWeekspan([makeItem('recurring', {}, rule)], null)
     for (const week of ['2026-W34', '2026-W35', '2026-W36']) {
-      const r = isCloseable(ledger, week, TODAY)
+      const r = isCloseable(weekspan, week, TODAY)
       // Past weeks must explain themselves; current/future weeks are a separate case.
       if (!r.closeable && weeksBetween(week, weekOf(TODAY)) > 0) {
         expect(r.blockers.length).toBeGreaterThan(0)
@@ -293,7 +293,7 @@ describe('blocker reporting stays consistent with closeable', () => {
 
   it('names the real reason when a recurring occurrence blocks a manual close', () => {
     const rule = { freq: 'weekly', weekday: 2, anchor: '2026-01-06' } as const
-    const ledger = makeLedger([makeItem('recurring', {}, rule)], null)
-    expect(() => closeWeek(ledger, '2026-W34', TODAY)).toThrow(/generated due/)
+    const weekspan = makeWeekspan([makeItem('recurring', {}, rule)], null)
+    expect(() => closeWeek(weekspan, '2026-W34', TODAY)).toThrow(/generated due/)
   })
 })

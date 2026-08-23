@@ -1,5 +1,5 @@
 /**
- * `ledger list` — the working set, in display order.
+ * `weekspan list` — the working set, in display order.
  *
  * Read-only: never calls `mutate`, never writes.
  */
@@ -12,8 +12,8 @@ import {
   windowDateRange,
   type IsoDate,
   type Item,
-  type Ledger,
-} from '@murch-todo/ledger-core'
+  type Weekspan,
+} from '@weekspan/weekspan-core'
 import { parseArgs } from 'node:util'
 import type { Command, CommandContext } from '../command.js'
 import { EXIT, type ExitCode } from '../exit.js'
@@ -83,8 +83,8 @@ export async function runList(
   out: Output = createOutput({ json: ctx.json }),
 ): Promise<ExitCode> {
   const filters = parse(ctx)
-  const ledger: Ledger = await read(ctx)
-  const window = computeWindow(ledger, ctx.today)
+  const weekspan: Weekspan = await read(ctx)
+  const window = computeWindow(weekspan, ctx.today)
 
   // Which dates to inspect for marks. `--week` narrows to one block; otherwise
   // the whole visible window, so a recurring item always shows something.
@@ -97,7 +97,7 @@ export async function runList(
     ? allWeekDates(filters.week)
     : datesBetween(range.from, range.to)
 
-  const ordered = orderItems(ledger.items)
+  const ordered = orderItems(weekspan.items)
   const rows = ordered
     .filter((i) => keep(i, filters, ctx.today, dates))
     .map((item) => ({
@@ -141,6 +141,6 @@ function datesBetween(from: IsoDate, to: IsoDate): IsoDate[] {
 export const listCommand: Command = {
   name: 'list',
   summary: 'List items in priority order',
-  usage: 'ledger list [--project <id>] [--open|--done] [--week <YYYY-Www>] [--due-before <date>]',
+  usage: 'weekspan list [--project <id>] [--open|--done] [--week <YYYY-Www>] [--due-before <date>]',
   run: (ctx) => runList(ctx),
 }

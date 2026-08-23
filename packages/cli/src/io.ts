@@ -10,35 +10,35 @@ import {
   serialize,
   serializeArchive,
   type ArchiveFile,
-  type Ledger,
+  type Weekspan,
   type MergeConflict,
-} from '@murch-todo/ledger-core'
+} from '@weekspan/weekspan-core'
 import { CliError, EXIT } from './exit.js'
 import { archiveDir, schemaPath } from './config.js'
 
 /**
- * All ledger file access.
+ * All weekspan file access.
  *
- * `ledger-core` is pure and exhaustively tested, so essentially every genuinely new
+ * `weekspan-core` is pure and exhaustively tested, so essentially every genuinely new
  * bug in this CLI lives in this file. Two hazards drive the design:
  *
- * 1. The ledger normally sits in a Drive/Dropbox folder. A partial write does not
+ * 1. The weekspan normally sits in a Drive/Dropbox folder. A partial write does not
  *    just corrupt a local file — it replicates to every device within seconds.
  *    So writes are atomic: temp file in the SAME directory, fsync, then rename.
  *    Rename is atomic within a filesystem; a crash leaves either the old file or
  *    the new one, never a half-written one.
  *
  * 2. A browser tab may write between our read and our write. Rather than clobber,
- *    we re-read and run ledger-core's semantic merge. That is the whole payoff of
+ *    we re-read and run weekspan-core's semantic merge. That is the whole payoff of
  *    having a real three-way merge: a CLI write racing a UI write loses neither.
  */
 
-export interface LoadedLedger {
+export interface LoadedWeekspan {
   path: string
-  ledger: Ledger
+  weekspan: Weekspan
   /** Exactly what was on disk — the merge base, and the staleness reference. */
   baselineText: string
-  baseline: Ledger
+  baseline: Weekspan
 }
 
 export interface SaveResult {
@@ -49,25 +49,25 @@ export interface SaveResult {
   conflicts: MergeConflict[]
 }
 
-export async function loadLedger(ledgerPath: string): Promise<LoadedLedger> {
+export async function loadWeekspan(weekspanPath: string): Promise<LoadedWeekspan> {
   let text: string
   try {
-    text = await readFile(ledgerPath, 'utf8')
+    text = await readFile(weekspanPath, 'utf8')
   } catch (err) {
     const e = err as NodeJS.ErrnoException
     if (e.code === 'ENOENT') {
       throw new CliError(
-        `No ledger at ${ledgerPath}\nCreate one with:  ledger init --ledger ${ledgerPath}`,
+        `No weekspan at ${weekspanPath}\nCreate one with:  weekspan init --weekspan ${weekspanPath}`,
         EXIT.FILE,
       )
     }
-    throw new CliError(`Cannot read ${ledgerPath}: ${e.message}`, EXIT.FILE)
+    throw new CliError(`Cannot read ${weekspanPath}: ${e.message}`, EXIT.FILE)
   }
 
-  return { path: ledgerPath, ledger: parseOrExplain(text, ledgerPath), baselineText: text, baseline: parseOrExplain(text, ledgerPath) }
+  return { path: weekspanPath, weekspan: parseOrExplain(text, weekspanPath), baselineText: text, baseline: parseOrExplain(text, weekspanPath) }
 }
 
-function parseOrExplain(text: string, ledgerPath: string): Ledger {
+function parseOrExplain(text: string, weekspanPath: string): Weekspan {
   try {
     return parse(text)
   } catch (err) {
@@ -75,16 +75,16 @@ function parseOrExplain(text: string, ledgerPath: string): Ledger {
       // Deliberately suggests nothing that writes. An older client "fixing" a newer
       // file would drop fields it does not understand and replicate that loss.
       throw new CliError(
-        `${ledgerPath} was written by a newer version of this tool ` +
+        `${weekspanPath} was written by a newer version of this tool ` +
           `(file version ${err.fileVersion}, this build understands ${err.supportedVersion}).\n` +
           `Update the CLI. Do not edit the file with this version.`,
         EXIT.FILE,
       )
     }
     if (err instanceof ParseError) {
-      throw new CliError(`${ledgerPath} is not a valid ledger:\n  ${err.message}`, EXIT.FILE)
+      throw new CliError(`${weekspanPath} is not a valid weekspan:\n  ${err.message}`, EXIT.FILE)
     }
-    throw new CliError(`${ledgerPath} could not be read: ${(err as Error).message}`, EXIT.FILE)
+    throw new CliError(`${weekspanPath} could not be read: ${(err as Error).message}`, EXIT.FILE)
   }
 }
 
@@ -102,7 +102,7 @@ function parseOrExplain(text: string, ledgerPath: string): Ledger {
  * For one user across a laptop, a phone and an occasional agent, a microsecond
  * window is not worth that, but the tradeoff is deliberate rather than overlooked.
  */
-export async function saveLedger(loaded: LoadedLedger, next: Ledger): Promise<SaveResult> {
+export async function saveWeekspan(loaded: LoadedWeekspan, next: Weekspan): Promise<SaveResult> {
   const nextText = serialize(next)
 
   let currentText: string
@@ -171,18 +171,18 @@ export async function atomicWrite(target: string, contents: string): Promise<voi
   }
 }
 
-/** Create a ledger file, refusing to clobber an existing one. */
-export async function createLedgerFile(ledgerPath: string, ledger: Ledger): Promise<void> {
-  if (existsSync(ledgerPath)) {
-    throw new CliError(`${ledgerPath} already exists. Refusing to overwrite.`, EXIT.CONFLICT)
+/** Create a weekspan file, refusing to clobber an existing one. */
+export async function createWeekspanFile(weekspanPath: string, weekspan: Weekspan): Promise<void> {
+  if (existsSync(weekspanPath)) {
+    throw new CliError(`${weekspanPath} already exists. Refusing to overwrite.`, EXIT.CONFLICT)
   }
-  mkdirSync(path.dirname(ledgerPath), { recursive: true })
-  await atomicWrite(ledgerPath, serialize(ledger))
+  mkdirSync(path.dirname(weekspanPath), { recursive: true })
+  await atomicWrite(weekspanPath, serialize(weekspan))
 }
 
-/** Write one closed-out week's archive beside the ledger. */
-export async function writeArchive(ledgerPath: string, archive: ArchiveFile): Promise<string> {
-  const dir = archiveDir(ledgerPath)
+/** Write one closed-out week's archive beside the weekspan. */
+export async function writeArchive(weekspanPath: string, archive: ArchiveFile): Promise<string> {
+  const dir = archiveDir(weekspanPath)
   mkdirSync(dir, { recursive: true })
   const target = path.join(dir, `${archive.week}.json`)
   if (existsSync(target)) {
@@ -196,12 +196,12 @@ export async function writeArchive(ledgerPath: string, archive: ArchiveFile): Pr
 }
 
 /**
- * Make sure `ledger.schema.json` sits beside the ledger, since `$schema` in the
- * file is the relative path `./ledger.schema.json` and editors resolve it from there.
+ * Make sure `weekspan.schema.json` sits beside the weekspan, since `$schema` in the
+ * file is the relative path `./weekspan.schema.json` and editors resolve it from there.
  * Never overwrites: a newer app version may have written a newer schema.
  */
-export async function ensureSchemaFile(ledgerPath: string, schemaJson: string): Promise<boolean> {
-  const target = schemaPath(ledgerPath)
+export async function ensureSchemaFile(weekspanPath: string, schemaJson: string): Promise<boolean> {
+  const target = schemaPath(weekspanPath)
   if (existsSync(target)) return false
   mkdirSync(path.dirname(target), { recursive: true })
   await writeFile(target, schemaJson, 'utf8')

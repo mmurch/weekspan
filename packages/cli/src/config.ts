@@ -3,21 +3,21 @@ import path from 'node:path'
 import { CliError, EXIT } from './exit.js'
 
 /**
- * Where the ledger lives.
+ * Where the weekspan lives.
  *
  * Resolution order, most explicit first:
- *   1. `--ledger <path>`   — explicit, wins over everything
- *   2. `LEDGER_FILE` env   — how agents and scripts will usually point at one
- *   3. `~/.ledgerrc`       — a single line holding a path
- *   4. `~/todo/personal.ledger.json` — conventional default
+ *   1. `--weekspan <path>`   — explicit, wins over everything
+ *   2. `WEEKSPAN_FILE` env   — how agents and scripts will usually point at one
+ *   3. `~/.weekspanrc`       — a single line holding a path
+ *   4. `~/todo/personal.weekspan.json` — conventional default
  *
- * Deliberately NOT a search up the current directory tree. This ledger normally
+ * Deliberately NOT a search up the current directory tree. This weekspan normally
  * lives in a synced folder (Drive, Dropbox) far from wherever a command happens
  * to be run, so cwd carries no signal — and a cwd-sensitive default would make
  * the same command write to different files depending on where it was invoked.
  */
-export const DEFAULT_LEDGER = path.join(homedir(), 'todo', 'personal.ledger.json')
-export const RC_FILE = path.join(homedir(), '.ledgerrc')
+export const DEFAULT_WEEKSPAN = path.join(homedir(), 'todo', 'personal.weekspan.json')
+export const RC_FILE = path.join(homedir(), '.weekspanrc')
 
 export interface ResolveOptions {
   flag?: string | undefined
@@ -26,12 +26,12 @@ export interface ResolveOptions {
 }
 
 /** Pure so it can be tested without touching the filesystem or environment. */
-export function resolveLedgerPath(opts: ResolveOptions): string {
+export function resolveWeekspanPath(opts: ResolveOptions): string {
   const fromRc = opts.rcContents?.trim().split('\n')[0]?.trim()
-  const chosen = opts.flag ?? opts.env ?? (fromRc || undefined) ?? DEFAULT_LEDGER
+  const chosen = opts.flag ?? opts.env ?? (fromRc || undefined) ?? DEFAULT_WEEKSPAN
 
   if (chosen.trim() === '') {
-    throw new CliError('Ledger path is empty. Pass --ledger <path> or set LEDGER_FILE.', EXIT.USAGE)
+    throw new CliError('Weekspan path is empty. Pass --weekspan <path> or set WEEKSPAN_FILE.', EXIT.USAGE)
   }
   return path.resolve(expandHome(chosen))
 }
@@ -42,15 +42,15 @@ function expandHome(p: string): string {
   return p
 }
 
-/** Directory holding the ledger — where `archive/` and `ledger.schema.json` live. */
-export function ledgerDir(ledgerPath: string): string {
-  return path.dirname(ledgerPath)
+/** Directory holding the weekspan — where `archive/` and `weekspan.schema.json` live. */
+export function weekspanDir(weekspanPath: string): string {
+  return path.dirname(weekspanPath)
 }
 
-export function archiveDir(ledgerPath: string): string {
-  return path.join(ledgerDir(ledgerPath), 'archive')
+export function archiveDir(weekspanPath: string): string {
+  return path.join(weekspanDir(weekspanPath), 'archive')
 }
 
-export function schemaPath(ledgerPath: string): string {
-  return path.join(ledgerDir(ledgerPath), 'ledger.schema.json')
+export function schemaPath(weekspanPath: string): string {
+  return path.join(weekspanDir(weekspanPath), 'weekspan.schema.json')
 }

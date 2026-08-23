@@ -1,4 +1,4 @@
-import type { ArchiveFile, IsoDate, IsoWeek, Item, Ledger } from './types.js'
+import type { ArchiveFile, IsoDate, IsoWeek, Item, Weekspan } from './types.js'
 import { getMark, setSkip } from './marks.js'
 import { occurrencesIn } from './recurrence.js'
 import { isArchivable, isGeneratedOccurrence } from './derived.js'
@@ -10,7 +10,7 @@ import { weekEnd, weekStart, weekOf, weeksBetween } from './dates.js'
  * gets archived out of the working file. See ARCHITECTURE.md "Close-out" and
  * "Auto-close".
  *
- * Every function here is pure — inputs are never mutated, a new `Ledger` is
+ * Every function here is pure — inputs are never mutated, a new `Weekspan` is
  * returned on every close.
  */
 
@@ -48,7 +48,7 @@ export interface CloseableResult {
  * weekend still has to be resolved before the week can close.
  */
 export function unresolvedInWeek(
-  ledger: Ledger,
+  weekspan: Weekspan,
   week: IsoWeek,
 ): { explicitDues: CloseBlocker[]; generatedOccurrences: CloseBlocker[] } {
   const from = weekStart(week)
@@ -57,7 +57,7 @@ export function unresolvedInWeek(
   const explicitDues: CloseBlocker[] = []
   const generatedOccurrences: CloseBlocker[] = []
 
-  for (const item of ledger.items) {
+  for (const item of weekspan.items) {
     // Explicit dues: scan the item's own marks in range, cheaper than scanning every date.
     for (const [date, mark] of Object.entries(item.marks)) {
       if (date < from || date > to) continue
@@ -99,20 +99,20 @@ export function unresolvedInWeek(
  * `closeWeek` fell through to a misleading "current or future week" error. Callers
  * that only care about human-actionable backlog should filter on `kind === 'explicit'`.
  */
-export function isCloseable(ledger: Ledger, week: IsoWeek, today: IsoDate): CloseableResult {
+export function isCloseable(weekspan: Weekspan, week: IsoWeek, today: IsoDate): CloseableResult {
   const currentWeek = weekOf(today)
   if (weeksBetween(week, currentWeek) <= 0) {
     // week is the current week or a future week: never closeable.
     return { closeable: false, blockers: [] }
   }
 
-  const { explicitDues, generatedOccurrences } = unresolvedInWeek(ledger, week)
+  const { explicitDues, generatedOccurrences } = unresolvedInWeek(weekspan, week)
   const blockers = [...explicitDues, ...generatedOccurrences]
   return { closeable: blockers.length === 0, blockers }
 }
 
-function requireOldestUnclosed(ledger: Ledger, week: IsoWeek, today: IsoDate): void {
-  const oldest = oldestUnclosedWeek(ledger, today)
+function requireOldestUnclosed(weekspan: Weekspan, week: IsoWeek, today: IsoDate): void {
+  const oldest = oldestUnclosedWeek(weekspan, today)
   if (week !== oldest) {
     throw new Error(
       `Cannot close ${week}: close-out is strictly sequential and the oldest unclosed week is ${oldest}`,
@@ -126,16 +126,16 @@ function requireOldestUnclosed(ledger: Ledger, week: IsoWeek, today: IsoDate): v
  *
  * Throws if `week` is not closeable (see `isCloseable`) or is not the oldest
  * unclosed week (close-out is strictly sequential — see ARCHITECTURE.md
- * "Close-out"). Pure: `ledger` is never mutated, a new `Ledger` is returned.
+ * "Close-out"). Pure: `weekspan` is never mutated, a new `Weekspan` is returned.
  */
 export function closeWeek(
-  ledger: Ledger,
+  weekspan: Weekspan,
   week: IsoWeek,
   today: IsoDate,
-): { ledger: Ledger; archive: ArchiveFile } {
-  requireOldestUnclosed(ledger, week, today)
+): { weekspan: Weekspan; archive: ArchiveFile } {
+  requireOldestUnclosed(weekspan, week, today)
 
-  const { closeable, blockers } = isCloseable(ledger, week, today)
+  const { closeable, blockers } = isCloseable(weekspan, week, today)
   if (!closeable) {
     const [first] = blockers
     const reason = first
@@ -147,7 +147,7 @@ export function closeWeek(
   const end = weekEnd(week)
   const archived: Item[] = []
   const remaining: Item[] = []
-  for (const item of ledger.items) {
+  for (const item of weekspan.items) {
     if (isArchivable(item, end)) {
       archived.push(item)
     } else {
@@ -155,19 +155,19 @@ export function closeWeek(
     }
   }
 
-  const newLedger: Ledger = {
-    ...ledger,
+  const newWeekspan: Weekspan = {
+    ...weekspan,
     closedThrough: week,
     items: remaining,
   }
 
   const archive: ArchiveFile = {
-    version: ledger.version,
+    version: weekspan.version,
     week,
     items: archived,
   }
 
-  return { ledger: newLedger, archive }
+  return { weekspan: newWeekspan, archive }
 }
 
 /** Hard cap on weeks `autoClose` will iterate — see its doc comment. */
@@ -184,7 +184,7 @@ const AUTO_CLOSE_MAX_WEEKS = 10_000
  *  2. Otherwise, every unresolved GENERATED recurring occurrence in the week
  *     gets `setSkip(item, date, 'auto')`, then the week closes.
  *
- * This is the "returning to a neglected ledger must never cost more than a
+ * This is the "returning to a neglected weekspan must never cost more than a
  * glance" principle (ARCHITECTURE.md "Auto-close"): recurring occurrences
  * fire every week whether the user is present or not, so blocking on them
  * would punish absence rather than avoidance. The `'auto'` provenance (never
@@ -197,10 +197,10 @@ const AUTO_CLOSE_MAX_WEEKS = 10_000
  * rather than looping silently or forever.
  */
 export function autoClose(
-  ledger: Ledger,
+  weekspan: Weekspan,
   today: IsoDate,
-): { ledger: Ledger; archives: ArchiveFile[]; weeksClosed: IsoWeek[]; autoSkipped: number } {
-  let current = ledger
+): { weekspan: Weekspan; archives: ArchiveFile[]; weeksClosed: IsoWeek[]; autoSkipped: number } {
+  let current = weekspan
   const archives: ArchiveFile[] = []
   const weeksClosed: IsoWeek[] = []
   let autoSkipped = 0
@@ -211,13 +211,13 @@ export function autoClose(
     const week = oldestUnclosedWeek(current, today)
     if (weeksBetween(week, currentWeek) <= 0) {
       // week is the current week or (shouldn't happen) beyond: nothing more to auto-close.
-      return { ledger: current, archives, weeksClosed, autoSkipped }
+      return { weekspan: current, archives, weeksClosed, autoSkipped }
     }
 
     const { explicitDues, generatedOccurrences } = unresolvedInWeek(current, week)
     if (explicitDues.length > 0) {
       // Real backlog: stop here, leave this week (and everything after) open.
-      return { ledger: current, archives, weeksClosed, autoSkipped }
+      return { weekspan: current, archives, weeksClosed, autoSkipped }
     }
 
     let skippedItems = current.items
@@ -235,10 +235,10 @@ export function autoClose(
       skippedItems = current.items.map((item) => byId.get(item.id) ?? item)
     }
 
-    const beforeClose: Ledger = { ...current, items: skippedItems }
-    const { ledger: closedLedger, archive } = closeWeek(beforeClose, week, today)
+    const beforeClose: Weekspan = { ...current, items: skippedItems }
+    const { weekspan: closedWeekspan, archive } = closeWeek(beforeClose, week, today)
 
-    current = closedLedger
+    current = closedWeekspan
     archives.push(archive)
     weeksClosed.push(week)
   }

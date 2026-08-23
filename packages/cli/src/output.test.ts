@@ -107,7 +107,7 @@ describe('error()', () => {
     const err = memoryStream()
     const output = createOutput({ json: true, color: false, stdout: out.stream, stderr: err.stream })
 
-    output.error('bad ledger path', EXIT.USAGE)
+    output.error('bad weekspan path', EXIT.USAGE)
 
     const parsed = JSON.parse(out.lines()[0] as string) as ErrorEnvelope
     expect('detail' in parsed.error).toBe(false)

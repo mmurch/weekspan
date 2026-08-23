@@ -1,7 +1,7 @@
 /**
  * End-to-end: real temp files, real commands, real serialized output.
  *
- * `ledger-core` is pure and covered by its own suite; these tests exist for the
+ * `weekspan-core` is pure and covered by its own suite; these tests exist for the
  * surface that only appears once commands, file I/O and the dispatcher are
  * combined — which is where every bug found so far has actually lived.
  */
@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import type { Ledger } from '@murch-todo/ledger-core'
+import type { Weekspan } from '@weekspan/weekspan-core'
 import type { CommandContext } from './command.js'
 import { createOutput, type Output } from './output.js'
 import { stripGlobals } from './index.js'
@@ -24,11 +24,11 @@ import { runCloseOut } from './commands/closeout.js'
 const TODAY = '2026-08-26' // Wednesday, 2026-W35
 
 let dir: string
-let ledgerPath: string
+let weekspanPath: string
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'ledger-e2e-'))
-  ledgerPath = path.join(dir, 'l.json')
+  dir = mkdtempSync(path.join(tmpdir(), 'weekspan-e2e-'))
+  weekspanPath = path.join(dir, 'l.json')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -53,11 +53,11 @@ function capture(json = false): Captured {
 }
 
 function ctx(argv: string[], json = false): CommandContext {
-  return { ledgerPath, json, today: TODAY, argv }
+  return { weekspanPath, json, today: TODAY, argv }
 }
 
-function onDisk(): Ledger {
-  return JSON.parse(readFileSync(ledgerPath, 'utf8')) as Ledger
+function onDisk(): Weekspan {
+  return JSON.parse(readFileSync(weekspanPath, 'utf8')) as Weekspan
 }
 
 async function init(): Promise<void> {
@@ -66,13 +66,13 @@ async function init(): Promise<void> {
 
 describe('stripGlobals', () => {
   it('removes global flags and their values from a command argv', () => {
-    // Regression: an undeclared `--ledger /path` did not vanish under
+    // Regression: an undeclared `--weekspan /path` did not vanish under
     // `strict: false` — parseArgs returned the VALUE as a positional, so
-    // `add "buy milk" --ledger ~/x.json` created an item titled
+    // `add "buy milk" --weekspan ~/x.json` created an item titled
     // "buy milk /Users/me/x.json".
-    expect(stripGlobals(['buy milk', '--ledger', '/tmp/x.json'])).toEqual(['buy milk'])
+    expect(stripGlobals(['buy milk', '--weekspan', '/tmp/x.json'])).toEqual(['buy milk'])
     expect(stripGlobals(['buy milk', '--today', '2026-01-01', '--json'])).toEqual(['buy milk'])
-    expect(stripGlobals(['buy milk', '--ledger=/tmp/x.json'])).toEqual(['buy milk'])
+    expect(stripGlobals(['buy milk', '--weekspan=/tmp/x.json'])).toEqual(['buy milk'])
   })
 
   it('leaves command-specific flags untouched', () => {
@@ -89,8 +89,8 @@ describe('stripGlobals', () => {
 describe('a full session', () => {
   it('init → add → due → done → status → close-out', async () => {
     await init()
-    expect(existsSync(ledgerPath)).toBe(true)
-    expect(existsSync(path.join(dir, 'ledger.schema.json'))).toBe(true)
+    expect(existsSync(weekspanPath)).toBe(true)
+    expect(existsSync(path.join(dir, 'weekspan.schema.json'))).toBe(true)
 
     const added = capture()
     await runAdd(ctx(['choose tiles', '--due', 'thu']), added.out)
@@ -117,14 +117,14 @@ describe('writes are precise', () => {
     await runAdd(ctx(['first']), capture().out)
     await runAdd(ctx(['second']), capture().out)
     const [a, b] = onDisk().items
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const moved = capture()
     await runMove(ctx([b!.id, '--after', a!.id]), moved.out)
 
     // Already in position: no rank change, therefore no write and no diff in a
     // synced folder. This is the whole point of minimalMoveRank returning null.
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
     expect(moved.stdout()).toMatch(/already in position/)
   })
 
@@ -132,19 +132,19 @@ describe('writes are precise', () => {
     await init()
     await runAdd(ctx(['a task']), capture().out)
     const id = onDisk().items[0]!.id
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     await runCellCommand(ctx([id, '2026-08-27']), 'clear', capture().out)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('read commands never write', async () => {
     await init()
     await runAdd(ctx(['a task']), capture().out)
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
     await runList(ctx([]), capture().out)
     await runStatus(ctx([]), capture().out)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -170,7 +170,7 @@ describe('skip provenance', () => {
     const l = onDisk()
     l.items[0]!.recurrence = { freq: 'weekly', weekday: 1, anchor: '2026-07-01' }
     l.closedThrough = '2026-W30'
-    writeFileSync(ledgerPath, JSON.stringify(l, null, 2), 'utf8')
+    writeFileSync(weekspanPath, JSON.stringify(l, null, 2), 'utf8')
 
     const auto = capture()
     await runCloseOut(ctx(['--auto']), auto.out)
@@ -187,26 +187,26 @@ describe('refusals protect data', () => {
     await init()
     await runAdd(ctx(['a task']), capture().out)
     const id = onDisk().items[0]!.id
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     await expect(runRm(ctx([id]), capture().out)).rejects.toThrow(/--force/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
   it('an ambiguous item reference errors instead of guessing', async () => {
     await init()
     await runAdd(ctx(['choose tiles']), capture().out)
     await runAdd(ctx(['choose paint']), capture().out)
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     const c = capture()
     const code = await runCellCommand(ctx(['choose', '2026-08-26']), 'done', c.out)
     expect(code).toBe(2) // EXIT.USAGE
     expect(c.stderr()).toMatch(/matches 2 items/)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
-  it('init refuses to overwrite an existing ledger', async () => {
+  it('init refuses to overwrite an existing weekspan', async () => {
     await init()
     await expect(runInit(ctx([]), capture().out)).rejects.toThrow(/already exists/)
   })

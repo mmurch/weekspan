@@ -1,5 +1,5 @@
 /**
- * `ledger init` — see e2e.test.ts for the fixture style this copies:
+ * `weekspan init` — see e2e.test.ts for the fixture style this copies:
  * `mkdtempSync` temp dir, `capture()` over `PassThrough` streams, `ctx()`
  * builder.
  */
@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import { SCHEMA_VERSION, parse } from '@murch-todo/ledger-core'
+import { SCHEMA_VERSION, parse } from '@weekspan/weekspan-core'
 import type { CommandContext } from '../command.js'
 import { EXIT } from '../exit.js'
 import { createOutput, type Output } from '../output.js'
@@ -16,11 +16,11 @@ import { runInit } from './init.js'
 const TODAY = '2026-08-26' // Wednesday, 2026-W35
 
 let dir: string
-let ledgerPath: string
+let weekspanPath: string
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'ledger-init-'))
-  ledgerPath = path.join(dir, 'l.json')
+  dir = mkdtempSync(path.join(tmpdir(), 'weekspan-init-'))
+  weekspanPath = path.join(dir, 'l.json')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -45,21 +45,21 @@ function capture(json = false): Captured {
 }
 
 function ctx(argv: string[], json = false): CommandContext {
-  return { ledgerPath, json, today: TODAY, argv }
+  return { weekspanPath, json, today: TODAY, argv }
 }
 
-describe('creates the ledger and its companions', () => {
-  it('writes the ledger, ledger.schema.json, AGENTS.md and CLAUDE.md', async () => {
+describe('creates the weekspan and its companions', () => {
+  it('writes the weekspan, weekspan.schema.json, AGENTS.md and CLAUDE.md', async () => {
     const c = capture()
     await runInit(ctx([]), c.out)
 
-    expect(existsSync(ledgerPath)).toBe(true)
-    expect(existsSync(path.join(dir, 'ledger.schema.json'))).toBe(true)
+    expect(existsSync(weekspanPath)).toBe(true)
+    expect(existsSync(path.join(dir, 'weekspan.schema.json'))).toBe(true)
     expect(existsSync(path.join(dir, 'AGENTS.md'))).toBe(true)
     expect(existsSync(path.join(dir, 'CLAUDE.md'))).toBe(true)
 
-    expect(c.stdout()).toContain(`Created ${ledgerPath}`)
-    expect(c.stdout()).toContain('ledger.schema.json')
+    expect(c.stdout()).toContain(`Created ${weekspanPath}`)
+    expect(c.stdout()).toContain('weekspan.schema.json')
     expect(c.stdout()).toContain('AGENTS.md')
     expect(c.stdout()).toContain('CLAUDE.md')
   })
@@ -68,18 +68,18 @@ describe('creates the ledger and its companions', () => {
     const c = capture(true)
     await runInit(ctx([], true), c.out)
     const data = JSON.parse(c.stdout()).data
-    expect(data.created).toBe(ledgerPath)
-    expect(data.schema).toBe(path.join(dir, 'ledger.schema.json'))
+    expect(data.created).toBe(weekspanPath)
+    expect(data.schema).toBe(path.join(dir, 'weekspan.schema.json'))
     expect(data.docs.sort()).toEqual(
       [path.join(dir, 'AGENTS.md'), path.join(dir, 'CLAUDE.md')].sort(),
     )
   })
 })
 
-describe('refuses to overwrite an existing ledger', () => {
+describe('refuses to overwrite an existing weekspan', () => {
   it('throws a CliError with EXIT.CONFLICT and writes nothing new', async () => {
     await runInit(ctx([]), capture().out)
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     await expect(runInit(ctx([]), capture().out)).rejects.toMatchObject({
       name: 'CliError',
@@ -87,7 +87,7 @@ describe('refuses to overwrite an existing ledger', () => {
     })
     await expect(runInit(ctx([]), capture().out)).rejects.toThrow(/already exists/)
 
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })
 
@@ -103,24 +103,24 @@ describe('never clobbers existing docs', () => {
   })
 })
 
-describe('the created ledger', () => {
-  it('parses cleanly via ledger-core and carries the current SCHEMA_VERSION', async () => {
+describe('the created weekspan', () => {
+  it('parses cleanly via weekspan-core and carries the current SCHEMA_VERSION', async () => {
     await runInit(ctx([]), capture().out)
-    const text = readFileSync(ledgerPath, 'utf8')
-    const ledger = parse(text)
-    expect(ledger.version).toBe(SCHEMA_VERSION)
-    expect(ledger.items).toEqual([])
-    expect(ledger.closedThrough).toBeNull()
+    const text = readFileSync(weekspanPath, 'utf8')
+    const weekspan = parse(text)
+    expect(weekspan.version).toBe(SCHEMA_VERSION)
+    expect(weekspan.items).toEqual([])
+    expect(weekspan.closedThrough).toBeNull()
   })
 })
 
 describe('positional path argument', () => {
-  it('overrides the context ledger path', async () => {
-    const customPath = path.join(dir, 'custom.ledger.json')
+  it('overrides the context weekspan path', async () => {
+    const customPath = path.join(dir, 'custom.weekspan.json')
     await runInit(ctx([customPath]), capture().out)
 
     expect(existsSync(customPath)).toBe(true)
-    expect(existsSync(ledgerPath)).toBe(false)
+    expect(existsSync(weekspanPath)).toBe(false)
     // Companion docs land beside the CUSTOM path, not the context path.
     expect(existsSync(path.join(dir, 'AGENTS.md'))).toBe(true)
   })

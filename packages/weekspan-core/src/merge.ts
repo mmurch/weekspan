@@ -1,9 +1,9 @@
-import type { IsoDate, Item, Ledger, Link, Mark, Project } from './types.js'
+import type { IsoDate, Item, Weekspan, Link, Mark, Project } from './types.js'
 
 /**
  * Semantic three-way merge.
  *
- * This is what makes a serverless, file-as-truth ledger survivable. Dropbox, Drive
+ * This is what makes a serverless, file-as-truth weekspan survivable. Dropbox, Drive
  * and iCloud resolve a simultaneous write by picking a whole file or dropping a
  * "conflicted copy" beside it. Because we parse the file into a real structure, we
  * can merge at the level of individual items and individual CELLS instead — which
@@ -43,12 +43,12 @@ export interface MergeStats {
 }
 
 export interface MergeResult {
-  merged: Ledger
+  merged: Weekspan
   conflicts: MergeConflict[]
   stats: MergeStats
 }
 
-/** Structural equality over the JSON-shaped values that appear in a ledger. */
+/** Structural equality over the JSON-shaped values that appear in a weekspan. */
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (a === null || b === null || a === undefined || b === undefined) return false
@@ -255,7 +255,7 @@ function mergeCollection<T extends { id: string }>(
   return { items: out, added, removed, changed }
 }
 
-export function merge(base: Ledger, ours: Ledger, theirs: Ledger): MergeResult {
+export function merge(base: Weekspan, ours: Weekspan, theirs: Weekspan): MergeResult {
   const conflicts: MergeConflict[] = []
   let marksChanged = 0
 
@@ -300,7 +300,7 @@ export function merge(base: Ledger, ours: Ledger, theirs: Ledger): MergeResult {
     if (!removedByUs && !removedByThem) vacation.add(d)
   }
 
-  const merged: Ledger = {
+  const merged: Weekspan = {
     ...ours,
     version: Math.max(ours.version, theirs.version),
     closedThrough,
@@ -328,6 +328,6 @@ function maxWeek(a: string | null, b: string | null): string | null {
 }
 
 /** True when `theirs` contains nothing `base` did not — i.e. we can write without merging. */
-export function isUnchanged(base: Ledger, theirs: Ledger): boolean {
+export function isUnchanged(base: Weekspan, theirs: Weekspan): boolean {
   return deepEqual(base, theirs)
 }

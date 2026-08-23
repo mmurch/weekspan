@@ -7,22 +7,22 @@
  * write goes through `mutate` (see session.ts), which is what makes merge
  * conflicts surface uniformly instead of each command having to remember.
  *
- * Two invariants enforced here rather than left to ledger-core, because they
+ * Two invariants enforced here rather than left to weekspan-core, because they
  * are CLI-specific policy, not cell-menu semantics:
  *
  *   1. `skip` from this CLI always writes `provenance: 'deliberate'`. There is
  *      no flag to write `'auto'` — that provenance is reserved for
  *      `autoClose` during catch-up. See ARCHITECTURE.md "Auto-close" and
- *      `SkipProvenance` in ledger-core/types.ts: an `auto` skip written by a
+ *      `SkipProvenance` in weekspan-core/types.ts: an `auto` skip written by a
  *      human action would make a deliberate dodge indistinguishable from
  *      months of absence.
  *   2. `due` and `done` refuse to write onto a vacation day
- *      (`ledger.vacationDays`), with `EXIT.CONFLICT`. `skip` and `clear`
+ *      (`weekspan.vacationDays`), with `EXIT.CONFLICT`. `skip` and `clear`
  *      are unaffected — you can still skip or un-mark a vacation day.
  */
 import type { CommandContext, Command } from '../command.js'
-import type { DisplayState, IsoDate, Item, Ledger } from '@murch-todo/ledger-core'
-import { clearMark, displayState, setDone, setDue, setSkip } from '@murch-todo/ledger-core'
+import type { DisplayState, IsoDate, Item, Weekspan } from '@weekspan/weekspan-core'
+import { clearMark, displayState, setDone, setDue, setSkip } from '@weekspan/weekspan-core'
 import { CliError, EXIT, type ExitCode } from '../exit.js'
 import { createOutput, type Output } from '../output.js'
 import { mutate } from '../session.js'
@@ -32,10 +32,10 @@ import { parseDateArg } from '../dates.js'
 type CellAction = 'done' | 'due' | 'skip' | 'clear'
 
 const USAGE: Record<CellAction, string> = {
-  done: 'ledger done <item> [date]',
-  due: 'ledger due <item> <date>',
-  skip: 'ledger skip <item> [date]',
-  clear: 'ledger clear <item> [date]',
+  done: 'weekspan done <item> [date]',
+  due: 'weekspan due <item> <date>',
+  skip: 'weekspan skip <item> [date]',
+  clear: 'weekspan clear <item> [date]',
 }
 
 /** Only `due` and `done` refuse to land on a vacation day; `skip`/`clear` don't. */
@@ -125,7 +125,7 @@ export async function runCellCommand(
     let resolvedTitle = ''
     let changed = true
 
-    const { ledger } = await mutate(ctx, out, (loaded: Ledger) => {
+    const { weekspan } = await mutate(ctx, out, (loaded: Weekspan) => {
       const item = resolveItem(loaded, itemQuery)
       resolvedId = item.id
       resolvedTitle = item.title
@@ -147,7 +147,7 @@ export async function runCellCommand(
       return { ...loaded, items: loaded.items.map((i) => (i.id === item.id ? updated : i)) }
     })
 
-    const finalItem = ledger.items.find((i) => i.id === resolvedId)
+    const finalItem = weekspan.items.find((i) => i.id === resolvedId)
     // Present after mutate() unless the item vanished mid-flight (e.g. a
     // concurrent delete merged in) — extremely unlikely, but report state
     // honestly rather than throw on the happy path's tail.

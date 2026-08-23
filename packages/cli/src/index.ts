@@ -5,7 +5,7 @@
  * agents install transiently via `npx`, so install weight is a real cost, and the
  * subcommand surface is small enough that a switch is clearer than a framework.
  *
- * Distribution is an esbuild bundle (`npm run build`). `ledger-core` exports
+ * Distribution is an esbuild bundle (`npm run build`). `weekspan-core` exports
  * TypeScript source rather than compiled JS — good for vitest and for the web app's
  * bundler, but not directly runnable by node — so bundling resolves that at build
  * time instead of forcing a two-stage compile or a `tsx` runtime dependency.
@@ -15,7 +15,7 @@ import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Command, CommandContext } from './command.js'
 import { CliError, EXIT, type ExitCode } from './exit.js'
-import { RC_FILE, resolveLedgerPath } from './config.js'
+import { RC_FILE, resolveWeekspanPath } from './config.js'
 import { createOutput } from './output.js'
 import { initCommand } from './commands/init.js'
 import { listCommand } from './commands/list.js'
@@ -51,12 +51,12 @@ for (const c of [
  * Remove global flags from a command's own argv.
  *
  * Commands parse with `strict: false` so they can ignore flags they do not know.
- * But an undeclared `--ledger /path` does not vanish — parseArgs hands the VALUE
- * back as a positional, so `ledger add "buy milk" --ledger ~/x.json` created an
+ * But an undeclared `--weekspan /path` does not vanish — parseArgs hands the VALUE
+ * back as a positional, so `weekspan add "buy milk" --weekspan ~/x.json` created an
  * item titled "buy milk /Users/me/x.json". Stripping globals here means every
  * command sees only its own arguments, and global flags work in any position.
  */
-const VALUED_GLOBALS = new Set(['--ledger', '--today'])
+const VALUED_GLOBALS = new Set(['--weekspan', '--today'])
 const BOOLEAN_GLOBALS = new Set(['--json'])
 
 export function stripGlobals(args: string[]): string[] {
@@ -68,7 +68,7 @@ export function stripGlobals(args: string[]): string[] {
       i++ // also drop its value
       continue
     }
-    // `--ledger=/path` form.
+    // `--weekspan=/path` form.
     if ([...VALUED_GLOBALS, ...BOOLEAN_GLOBALS].some((g) => arg.startsWith(`${g}=`))) continue
     out.push(arg)
   }
@@ -76,7 +76,7 @@ export function stripGlobals(args: string[]): string[] {
 }
 
 function todayIso(now: Date): string {
-  // Local calendar date, not UTC: "today" must mean the user's today. ledger-core
+  // Local calendar date, not UTC: "today" must mean the user's today. weekspan-core
   // does its arithmetic in UTC, but the *choice* of which day it is now is local.
   const y = String(now.getFullYear()).padStart(4, '0')
   const m = String(now.getMonth() + 1).padStart(2, '0')
@@ -93,12 +93,12 @@ function readRc(): string | undefined {
 }
 
 function helpText(): string {
-  const lines = ['ledger — personal TODO ledger', '', 'Usage: ledger <command> [options]', '', 'Commands:']
+  const lines = ['weekspan — personal TODO weekspan', '', 'Usage: weekspan <command> [options]', '', 'Commands:']
   for (const c of [...COMMANDS.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     lines.push(`  ${c.name.padEnd(12)} ${c.summary}`)
   }
   lines.push('', 'Global options:')
-  lines.push('  --ledger <path>  Ledger file (else $LEDGER_FILE, ~/.ledgerrc, ~/todo/personal.ledger.json)')
+  lines.push('  --weekspan <path>  Weekspan file (else $WEEKSPAN_FILE, ~/.weekspanrc, ~/todo/personal.weekspan.json)')
   lines.push('  --json           Machine-readable output on stdout')
   lines.push('  --today <date>   Override today, for testing')
   lines.push('  --help           Show this help')
@@ -132,7 +132,7 @@ export async function main(argv: string[], now = new Date()): Promise<ExitCode> 
     globals = parseArgs({
       args: argv,
       options: {
-        ledger: { type: 'string' },
+        weekspan: { type: 'string' },
         json: { type: 'boolean', default: false },
         today: { type: 'string' },
       },
@@ -146,9 +146,9 @@ export async function main(argv: string[], now = new Date()): Promise<ExitCode> 
 
   try {
     const ctx: CommandContext = {
-      ledgerPath: resolveLedgerPath({
-        flag: globals.values.ledger as string | undefined,
-        env: process.env.LEDGER_FILE,
+      weekspanPath: resolveWeekspanPath({
+        flag: globals.values.weekspan as string | undefined,
+        env: process.env.WEEKSPAN_FILE,
         rcContents: readRc(),
       }),
       json: Boolean(globals.values.json),

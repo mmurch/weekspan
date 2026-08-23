@@ -1,5 +1,5 @@
 /**
- * Strict parsing of the ledger schema.
+ * Strict parsing of the weekspan schema.
  *
  * v1 is strict by design (see ARCHITECTURE.md "Format" / "Deferred" —
  * a tolerant, repairing reader is explicitly deferred to a later version).
@@ -20,7 +20,7 @@ import type {
   IsoDate,
   IsoWeek,
   Item,
-  Ledger,
+  Weekspan,
   Link,
   Mark,
   MarkKind,
@@ -57,7 +57,7 @@ export class FutureVersionError extends Error {
     public readonly supportedVersion: number = SCHEMA_VERSION,
   ) {
     super(
-      `Ledger file version ${fileVersion} is newer than supported version ${supportedVersion}. Refusing to parse — upgrade the client.`,
+      `Weekspan file version ${fileVersion} is newer than supported version ${supportedVersion}. Refusing to parse — upgrade the client.`,
     )
     this.name = 'FutureVersionError'
   }
@@ -386,13 +386,13 @@ function parseProject(raw: unknown, path: string): Project {
 // Top-level entry points
 // ---------------------------------------------------------------------------
 
-const LEDGER_KEYS = ['$schema', '$agent', 'version', 'closedThrough', 'vacationDays', 'projects', 'items'] as const
+const WEEKSPAN_KEYS = ['$schema', '$agent', 'version', 'closedThrough', 'vacationDays', 'projects', 'items'] as const
 
-/** Parse the working ledger file. Strict — see module doc. */
-export function parse(text: string): Ledger {
+/** Parse the working weekspan file. Strict — see module doc. */
+export function parse(text: string): Weekspan {
   const raw = parseJson(text)
   const obj = expectObject(raw, '')
-  rejectUnknownKeys(obj, LEDGER_KEYS, '')
+  rejectUnknownKeys(obj, WEEKSPAN_KEYS, '')
 
   const $schema = optionalField(obj, '$schema', '', expectString)
   const $agent = optionalField(obj, '$agent', '', expectString)
@@ -426,7 +426,7 @@ export function parse(text: string): Ledger {
     vacationDays,
     projects,
     items,
-  } as Ledger
+  } as Weekspan
 }
 
 const ARCHIVE_KEYS = ['version', 'week', 'items'] as const

@@ -2,29 +2,29 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
-  createLedger,
+  createWeekspan,
   serialize,
   setDone,
   setDue,
   type Item,
-  type Ledger,
-} from '@murch-todo/ledger-core'
+  type Weekspan,
+} from '@weekspan/weekspan-core'
 import { CliError, EXIT } from './exit.js'
 import {
   atomicWrite,
-  createLedgerFile,
+  createWeekspanFile,
   ensureSchemaFile,
-  loadLedger,
-  saveLedger,
+  loadWeekspan,
+  saveWeekspan,
   writeArchive,
 } from './io.js'
 
 let dir: string
-let ledgerPath: string
+let weekspanPath: string
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'ledger-io-'))
-  ledgerPath = path.join(dir, 'personal.ledger.json')
+  dir = mkdtempSync(path.join(tmpdir(), 'weekspan-io-'))
+  weekspanPath = path.join(dir, 'personal.weekspan.json')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -32,92 +32,92 @@ function item(id: string, rank: string, over: Partial<Item> = {}): Item {
   return { id, title: id, rank, marks: {}, ...over }
 }
 
-function seed(items: Item[] = []): Ledger {
-  return createLedger({ items })
+function seed(items: Item[] = []): Weekspan {
+  return createWeekspan({ items })
 }
 
-function writeRaw(l: Ledger): void {
-  writeFileSync(ledgerPath, serialize(l), 'utf8')
+function writeRaw(l: Weekspan): void {
+  writeFileSync(weekspanPath, serialize(l), 'utf8')
 }
 
-describe('loadLedger', () => {
-  it('explains a missing ledger and points at init', async () => {
-    await expect(loadLedger(ledgerPath)).rejects.toMatchObject({ code: EXIT.FILE })
-    await expect(loadLedger(ledgerPath)).rejects.toThrow(/ledger init/)
+describe('loadWeekspan', () => {
+  it('explains a missing weekspan and points at init', async () => {
+    await expect(loadWeekspan(weekspanPath)).rejects.toMatchObject({ code: EXIT.FILE })
+    await expect(loadWeekspan(weekspanPath)).rejects.toThrow(/weekspan init/)
   })
 
-  it('reports a malformed ledger with the offending path', async () => {
-    writeFileSync(ledgerPath, '{ "version": 1, "items": "nope" }', 'utf8')
-    await expect(loadLedger(ledgerPath)).rejects.toThrow(/not a valid ledger/)
+  it('reports a malformed weekspan with the offending path', async () => {
+    writeFileSync(weekspanPath, '{ "version": 1, "items": "nope" }', 'utf8')
+    await expect(loadWeekspan(weekspanPath)).rejects.toThrow(/not a valid weekspan/)
   })
 
   it('refuses a file from a newer version without suggesting any write', async () => {
     const raw = JSON.parse(serialize(seed()))
     raw.version = 99
-    writeFileSync(ledgerPath, JSON.stringify(raw), 'utf8')
-    const err = await loadLedger(ledgerPath).catch((e: CliError) => e)
+    writeFileSync(weekspanPath, JSON.stringify(raw), 'utf8')
+    const err = await loadWeekspan(weekspanPath).catch((e: CliError) => e)
     expect((err as CliError).code).toBe(EXIT.FILE)
     expect((err as CliError).message).toMatch(/Update the CLI/)
     // Must not tell the user to edit or re-init — that would replicate data loss.
-    expect((err as CliError).message).not.toMatch(/ledger init/)
+    expect((err as CliError).message).not.toMatch(/weekspan init/)
   })
 
   it('gives baseline and working copies that are independent objects', async () => {
     writeRaw(seed([item('a', 'aV')]))
-    const loaded = await loadLedger(ledgerPath)
-    loaded.ledger.items[0]!.title = 'mutated'
+    const loaded = await loadWeekspan(weekspanPath)
+    loaded.weekspan.items[0]!.title = 'mutated'
     expect(loaded.baseline.items[0]!.title).toBe('a')
   })
 })
 
-describe('saveLedger', () => {
+describe('saveWeekspan', () => {
   it('writes nothing when the state is unchanged', async () => {
     writeRaw(seed([item('a', 'aV')]))
-    const loaded = await loadLedger(ledgerPath)
-    const before = readFileSync(ledgerPath, 'utf8')
+    const loaded = await loadWeekspan(weekspanPath)
+    const before = readFileSync(weekspanPath, 'utf8')
 
-    const result = await saveLedger(loaded, loaded.ledger)
+    const result = await saveWeekspan(loaded, loaded.weekspan)
     expect(result.written).toBe(false)
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 
-  it('writes a changed ledger', async () => {
+  it('writes a changed weekspan', async () => {
     writeRaw(seed([item('a', 'aV')]))
-    const loaded = await loadLedger(ledgerPath)
-    const next: Ledger = {
-      ...loaded.ledger,
-      items: [setDone(loaded.ledger.items[0]!, '2026-08-26')],
+    const loaded = await loadWeekspan(weekspanPath)
+    const next: Weekspan = {
+      ...loaded.weekspan,
+      items: [setDone(loaded.weekspan.items[0]!, '2026-08-26')],
     }
-    const result = await saveLedger(loaded, next)
+    const result = await saveWeekspan(loaded, next)
     expect(result.written).toBe(true)
-    expect(readFileSync(ledgerPath, 'utf8')).toContain('2026-08-26')
+    expect(readFileSync(weekspanPath, 'utf8')).toContain('2026-08-26')
   })
 
   it('merges a concurrent write instead of clobbering it', async () => {
     // The scenario this whole layer exists for: a browser tab writes between our
     // read and our write. Neither edit may be lost.
     writeRaw(seed([item('a', 'aV'), item('b', 'am')]))
-    const loaded = await loadLedger(ledgerPath)
+    const loaded = await loadWeekspan(weekspanPath)
 
     // Someone else marks item b done, directly on disk.
-    const theirs: Ledger = {
+    const theirs: Weekspan = {
       ...loaded.baseline,
       items: [loaded.baseline.items[0]!, setDone(loaded.baseline.items[1]!, '2026-08-25')],
     }
-    writeFileSync(ledgerPath, serialize(theirs), 'utf8')
+    writeFileSync(weekspanPath, serialize(theirs), 'utf8')
 
     // We meanwhile set a due on item a.
-    const ours: Ledger = {
-      ...loaded.ledger,
-      items: [setDue(loaded.ledger.items[0]!, '2026-08-27'), loaded.ledger.items[1]!],
+    const ours: Weekspan = {
+      ...loaded.weekspan,
+      items: [setDue(loaded.weekspan.items[0]!, '2026-08-27'), loaded.weekspan.items[1]!],
     }
-    const result = await saveLedger(loaded, ours)
+    const result = await saveWeekspan(loaded, ours)
 
     expect(result.merged).toBe(true)
     expect(result.written).toBe(true)
     expect(result.conflicts).toHaveLength(0)
 
-    const final = JSON.parse(readFileSync(ledgerPath, 'utf8')) as Ledger
+    const final = JSON.parse(readFileSync(weekspanPath, 'utf8')) as Weekspan
     const a = final.items.find((i) => i.id === 'a')!
     const b = final.items.find((i) => i.id === 'b')!
     expect(a.marks['2026-08-27']!.kind).toBe('due')
@@ -126,9 +126,9 @@ describe('saveLedger', () => {
 
   it('surfaces conflicts when both sides changed the same cell', async () => {
     writeRaw(seed([item('a', 'aV', { marks: { '2026-08-26': { kind: 'due' } } })]))
-    const loaded = await loadLedger(ledgerPath)
+    const loaded = await loadWeekspan(weekspanPath)
 
-    const theirs: Ledger = {
+    const theirs: Weekspan = {
       ...loaded.baseline,
       items: [
         {
@@ -137,13 +137,13 @@ describe('saveLedger', () => {
         },
       ],
     }
-    writeFileSync(ledgerPath, serialize(theirs), 'utf8')
+    writeFileSync(weekspanPath, serialize(theirs), 'utf8')
 
-    const ours: Ledger = {
-      ...loaded.ledger,
-      items: [setDone(loaded.ledger.items[0]!, '2026-08-26')],
+    const ours: Weekspan = {
+      ...loaded.weekspan,
+      items: [setDone(loaded.weekspan.items[0]!, '2026-08-26')],
     }
-    const result = await saveLedger(loaded, ours)
+    const result = await saveWeekspan(loaded, ours)
 
     expect(result.conflicts).toHaveLength(1)
     expect(result.conflicts[0]!.field).toBe('marks.2026-08-26')
@@ -153,30 +153,30 @@ describe('saveLedger', () => {
     // Content comparison rather than mtime: many filesystems report mtime at
     // 1s granularity, so two writes in the same second look identical by stat.
     writeRaw(seed([item('a', 'aV')]))
-    const loaded = await loadLedger(ledgerPath)
-    const theirs: Ledger = {
+    const loaded = await loadWeekspan(weekspanPath)
+    const theirs: Weekspan = {
       ...loaded.baseline,
       items: [setDone(loaded.baseline.items[0]!, '2026-08-25')],
     }
-    writeFileSync(ledgerPath, serialize(theirs), 'utf8') // immediately, same tick
-    const result = await saveLedger(loaded, { ...loaded.ledger, vacationDays: ['2026-09-01'] })
+    writeFileSync(weekspanPath, serialize(theirs), 'utf8') // immediately, same tick
+    const result = await saveWeekspan(loaded, { ...loaded.weekspan, vacationDays: ['2026-09-01'] })
     expect(result.merged).toBe(true)
   })
 
   it('keeps our edit when the file was deleted under us', async () => {
     writeRaw(seed([item('a', 'aV')]))
-    const loaded = await loadLedger(ledgerPath)
-    rmSync(ledgerPath)
-    const result = await saveLedger(loaded, { ...loaded.ledger, vacationDays: ['2026-09-01'] })
+    const loaded = await loadWeekspan(weekspanPath)
+    rmSync(weekspanPath)
+    const result = await saveWeekspan(loaded, { ...loaded.weekspan, vacationDays: ['2026-09-01'] })
     expect(result.written).toBe(true)
-    expect(readFileSync(ledgerPath, 'utf8')).toContain('2026-09-01')
+    expect(readFileSync(weekspanPath, 'utf8')).toContain('2026-09-01')
   })
 })
 
 describe('atomicWrite', () => {
   it('leaves no temp files behind', async () => {
-    await atomicWrite(ledgerPath, 'hello')
-    expect(readdirSync(dir)).toEqual(['personal.ledger.json'])
+    await atomicWrite(weekspanPath, 'hello')
+    expect(readdirSync(dir)).toEqual(['personal.weekspan.json'])
   })
 
   it('places the temp file in the target directory, not the system temp dir', async () => {
@@ -184,51 +184,51 @@ describe('atomicWrite', () => {
     // degrade to a copy, which is exactly the non-atomic write we are avoiding.
     const nested = path.join(dir, 'sub')
     const target = path.join(nested, 'l.json')
-    await createLedgerFile(target, seed())
+    await createWeekspanFile(target, seed())
     expect(readdirSync(nested)).toEqual(['l.json'])
   })
 
   it('overwrites an existing file completely, not partially', async () => {
-    await atomicWrite(ledgerPath, 'a much longer original content string')
-    await atomicWrite(ledgerPath, 'short')
-    expect(readFileSync(ledgerPath, 'utf8')).toBe('short')
+    await atomicWrite(weekspanPath, 'a much longer original content string')
+    await atomicWrite(weekspanPath, 'short')
+    expect(readFileSync(weekspanPath, 'utf8')).toBe('short')
   })
 })
 
-describe('createLedgerFile', () => {
+describe('createWeekspanFile', () => {
   it('creates parent directories', async () => {
     const target = path.join(dir, 'a', 'b', 'l.json')
-    await createLedgerFile(target, seed())
+    await createWeekspanFile(target, seed())
     expect(readFileSync(target, 'utf8')).toContain('"version"')
   })
 
-  it('refuses to overwrite an existing ledger', async () => {
-    await createLedgerFile(ledgerPath, seed())
-    await expect(createLedgerFile(ledgerPath, seed())).rejects.toMatchObject({
+  it('refuses to overwrite an existing weekspan', async () => {
+    await createWeekspanFile(weekspanPath, seed())
+    await expect(createWeekspanFile(weekspanPath, seed())).rejects.toMatchObject({
       code: EXIT.CONFLICT,
     })
   })
 })
 
 describe('writeArchive', () => {
-  it('writes into an archive/ directory beside the ledger', async () => {
-    const target = await writeArchive(ledgerPath, { version: 1, week: '2026-W34', items: [] })
+  it('writes into an archive/ directory beside the weekspan', async () => {
+    const target = await writeArchive(weekspanPath, { version: 1, week: '2026-W34', items: [] })
     expect(target).toBe(path.join(dir, 'archive', '2026-W34.json'))
     expect(JSON.parse(readFileSync(target, 'utf8')).week).toBe('2026-W34')
   })
 
   it('refuses to overwrite an already-closed week', async () => {
-    await writeArchive(ledgerPath, { version: 1, week: '2026-W34', items: [] })
+    await writeArchive(weekspanPath, { version: 1, week: '2026-W34', items: [] })
     await expect(
-      writeArchive(ledgerPath, { version: 1, week: '2026-W34', items: [] }),
+      writeArchive(weekspanPath, { version: 1, week: '2026-W34', items: [] }),
     ).rejects.toMatchObject({ code: EXIT.CONFLICT })
   })
 })
 
 describe('ensureSchemaFile', () => {
   it('writes the schema once and never overwrites it', async () => {
-    expect(await ensureSchemaFile(ledgerPath, '{"a":1}')).toBe(true)
-    expect(await ensureSchemaFile(ledgerPath, '{"b":2}')).toBe(false)
-    expect(readFileSync(path.join(dir, 'ledger.schema.json'), 'utf8')).toBe('{"a":1}')
+    expect(await ensureSchemaFile(weekspanPath, '{"a":1}')).toBe(true)
+    expect(await ensureSchemaFile(weekspanPath, '{"b":2}')).toBe(false)
+    expect(readFileSync(path.join(dir, 'weekspan.schema.json'), 'utf8')).toBe('{"a":1}')
   })
 })

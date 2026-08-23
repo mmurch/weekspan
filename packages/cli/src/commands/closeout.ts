@@ -1,5 +1,5 @@
 /**
- * `ledger close-out` — close the oldest unclosed week.
+ * `weekspan close-out` — close the oldest unclosed week.
  */
 import { parseArgs } from 'node:util'
 import {
@@ -10,11 +10,11 @@ import {
   weekOf,
   weeksBetween,
   type ArchiveFile,
-  type Ledger,
-} from '@murch-todo/ledger-core'
+  type Weekspan,
+} from '@weekspan/weekspan-core'
 import type { Command, CommandContext } from '../command.js'
 import { CliError, EXIT, type ExitCode } from '../exit.js'
-import { loadLedger, saveLedger, writeArchive } from '../io.js'
+import { loadWeekspan, saveWeekspan, writeArchive } from '../io.js'
 import { createOutput, type Output } from '../output.js'
 
 export async function runCloseOut(
@@ -28,17 +28,17 @@ export async function runCloseOut(
     allowPositionals: true,
   })
 
-  const loaded = await loadLedger(ctx.ledgerPath)
+  const loaded = await loadWeekspan(ctx.weekspanPath)
   return values.auto
     ? runAuto(ctx, out, loaded)
     : runSingle(ctx, out, loaded)
 }
 
-type Loaded = Awaited<ReturnType<typeof loadLedger>>
+type Loaded = Awaited<ReturnType<typeof loadWeekspan>>
 
 async function runSingle(ctx: CommandContext, out: Output, loaded: Loaded): Promise<ExitCode> {
-  const ledger = loaded.ledger
-  const week = oldestUnclosedWeek(ledger, ctx.today)
+  const weekspan = loaded.weekspan
+  const week = oldestUnclosedWeek(weekspan, ctx.today)
 
   if (weeksBetween(week, weekOf(ctx.today)) <= 0) {
     throw new CliError(
@@ -47,7 +47,7 @@ async function runSingle(ctx: CommandContext, out: Output, loaded: Loaded): Prom
     )
   }
 
-  const check = isCloseable(ledger, week, ctx.today)
+  const check = isCloseable(weekspan, week, ctx.today)
   if (!check.closeable) {
     const explicit = check.blockers.filter((b) => b.kind === 'explicit')
     const generated = check.blockers.filter((b) => b.kind === 'generated')
@@ -64,14 +64,14 @@ async function runSingle(ctx: CommandContext, out: Output, loaded: Loaded): Prom
     })
   }
 
-  const { ledger: next, archive } = closeWeek(ledger, week, ctx.today)
+  const { weekspan: next, archive } = closeWeek(weekspan, week, ctx.today)
 
-  // ORDER MATTERS: archive first, then the trimmed ledger. If the process dies
-  // between the two, an orphaned archive file is recoverable — a ledger with
+  // ORDER MATTERS: archive first, then the trimmed weekspan. If the process dies
+  // between the two, an orphaned archive file is recoverable — a weekspan with
   // items removed and no archive written is permanent data loss.
-  const archivePath = await writeArchive(ctx.ledgerPath, archive)
-  const saved = await saveLedger(loaded, next)
-  reportConflicts(out, saved, ctx.ledgerPath)
+  const archivePath = await writeArchive(ctx.weekspanPath, archive)
+  const saved = await saveWeekspan(loaded, next)
+  reportConflicts(out, saved, ctx.weekspanPath)
 
   const stayed = next.items.length
   out.data(
@@ -80,7 +80,7 @@ async function runSingle(ctx: CommandContext, out: Output, loaded: Loaded): Prom
       `Archived ${archive.items.length} item(s) to ${archivePath}.`,
       // Said explicitly because recurring items are NEVER archived, and a user
       // who does not know that will assume they were lost.
-      `${stayed} item(s) remain in the ledger (recurring items never archive).`,
+      `${stayed} item(s) remain in the weekspan (recurring items never archive).`,
     ].join('\n'),
     {
       week,
@@ -93,7 +93,7 @@ async function runSingle(ctx: CommandContext, out: Output, loaded: Loaded): Prom
 }
 
 async function runAuto(ctx: CommandContext, out: Output, loaded: Loaded): Promise<ExitCode> {
-  const result = autoClose(loaded.ledger, ctx.today)
+  const result = autoClose(loaded.weekspan, ctx.today)
 
   if (result.weeksClosed.length === 0) {
     out.data('Nothing to close.', { weeksClosed: [], autoSkipped: 0, archives: [] })
@@ -102,10 +102,10 @@ async function runAuto(ctx: CommandContext, out: Output, loaded: Loaded): Promis
 
   const paths: string[] = []
   for (const archive of result.archives as ArchiveFile[]) {
-    paths.push(await writeArchive(ctx.ledgerPath, archive))
+    paths.push(await writeArchive(ctx.weekspanPath, archive))
   }
-  const saved = await saveLedger(loaded, result.ledger as Ledger)
-  reportConflicts(out, saved, ctx.ledgerPath)
+  const saved = await saveWeekspan(loaded, result.weekspan as Weekspan)
+  reportConflicts(out, saved, ctx.weekspanPath)
 
   out.data(
     [
@@ -127,10 +127,10 @@ async function runAuto(ctx: CommandContext, out: Output, loaded: Loaded): Promis
 function reportConflicts(
   out: Output,
   saved: { merged: boolean; conflicts: Array<{ itemId: string | null; field: string }> },
-  ledgerPath: string,
+  weekspanPath: string,
 ): void {
   if (saved.merged) {
-    out.warn(`Another writer changed ${ledgerPath} during close-out; changes were merged.`)
+    out.warn(`Another writer changed ${weekspanPath} during close-out; changes were merged.`)
   }
   for (const c of saved.conflicts) {
     out.warn(`Conflict on ${c.itemId ? `${c.itemId} ` : ''}${c.field}: kept this session's value.`)
@@ -140,6 +140,6 @@ function reportConflicts(
 export const closeOutCommand: Command = {
   name: 'close-out',
   summary: 'Close the oldest unclosed week (--auto to catch up)',
-  usage: 'ledger close-out [--auto]',
+  usage: 'weekspan close-out [--auto]',
   run: (ctx) => runCloseOut(ctx),
 }

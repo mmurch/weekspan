@@ -1,5 +1,5 @@
-import { addDays, isValidIsoDate, weekday } from '@murch-todo/ledger-core'
-import type { IsoDate } from '@murch-todo/ledger-core'
+import { addDays, isValidIsoDate, weekday } from '@weekspan/weekspan-core'
+import type { IsoDate } from '@weekspan/weekspan-core'
 import { CliError, EXIT } from './exit.js'
 
 /**
@@ -7,7 +7,7 @@ import { CliError, EXIT } from './exit.js'
  *
  * `today` is always passed in, never read from the clock — no `new Date()`
  * anywhere in this module — so every form below is deterministically testable,
- * mirroring how every date-dependent function in ledger-core takes `today` as
+ * mirroring how every date-dependent function in weekspan-core takes `today` as
  * a parameter rather than reaching for the system clock.
  *
  * Accepted forms:

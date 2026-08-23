@@ -1,9 +1,9 @@
 {
-  "name": "@murch-todo/ledger-core",
+  "name": "@weekspan/weekspan-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pure ledger logic: schema, ranking, marks, recurrence, close-out, merge. No I/O.",
+  "description": "Pure domain logic: schema, ranking, marks, recurrence, close-out, merge. No I/O.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

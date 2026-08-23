@@ -1,5 +1,5 @@
 /**
- * `ledger-core` — all ledger logic, no I/O.
+ * `weekspan-core` — all weekspan logic, no I/O.
  *
  * This package is consumed by three things: the browser app (File System Access
  * API), the CLI that agents drive, and eventually an MCP server. Every business
@@ -16,7 +16,7 @@ export type {
   IsoDate,
   IsoWeek,
   Item,
-  Ledger,
+  Weekspan,
   Link,
   Mark,
   MarkKind,
@@ -27,7 +27,7 @@ export type {
 } from './types.js'
 export { AGENT_WARNING, SCHEMA_VERSION } from './types.js'
 
-export { createArchive, createLedger } from './ledger.js'
+export { createArchive, createWeekspan } from './weekspan.js'
 
 export {
   addDays,
@@ -93,7 +93,7 @@ export {
   rowStyle,
 } from './derived.js'
 
-export type { LedgerWindow, WindowWeek } from './window.js'
+export type { WeekWindow, WindowWeek } from './window.js'
 export {
   computeWindow,
   isWeekInWindow,

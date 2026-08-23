@@ -1,4 +1,4 @@
-# Implementation Notes — `ledger-core`
+# Implementation Notes — `weekspan-core`
 
 Decisions made *during* the build that go beyond `ARCHITECTURE.md`, plus the judgment
 calls each module author flagged for review. Read this alongside the architecture doc;
@@ -39,7 +39,7 @@ alone.
 
 **`projectId` rather than `project` on items.** The handoff stored a project name per item.
 Storing the id means renaming a project touches one record instead of rewriting every item
-in the file — which in a synced, diffable ledger is the difference between a one-line diff
+in the file — which in a synced, diffable weekspan is the difference between a one-line diff
 and a whole-file conflict.
 
 **Strict compiler settings** (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
@@ -163,10 +163,10 @@ Knock-on changes:
 
 ## `serialize.ts` / `parse.ts`
 
-- `$schema` is a **placeholder URI** (`https://murch-todo.dev/schema/ledger-v1.json`) — no such
+- `$schema` is a **placeholder URI** (`https://murch-todo.dev/schema/weekspan-v1.json`) — no such
   document exists yet. Either publish one or drop the field.
 - Serialize **always stamps the current `SCHEMA_VERSION`**, overwriting whatever the in-memory
-  ledger carried. Harmless in v1 where no migrations exist, but once they do this would let a
+  weekspan carried. Harmless in v1 where no migrations exist, but once they do this would let a
   file claim a shape upgrade that never actually ran. Revisit before writing migration code.
 - Recurrence field exclusivity is enforced **harder than the type requires**: `weekly`/`biweekly`
   demand `weekday` and forbid `monthday`, and vice versa. Defensible under strict-v1.
@@ -214,19 +214,19 @@ Regression tests added: a week blocked only by a generated occurrence reports no
 blockers; `closeable: false` never coexists with an empty blocker list for a past week; and the
 thrown message names the real cause.
 
-## `ledger.ts` — construction helpers (new)
+## `weekspan.ts` — construction helpers (new)
 
-`createLedger(init?)` and `createArchive(week, items)` stamp `SCHEMA_VERSION` and sensible
+`createWeekspan(init?)` and `createArchive(week, items)` stamp `SCHEMA_VERSION` and sensible
 defaults. They exist so there is exactly ONE obvious correct way to build a new header, now
 that `serialize` no longer supplies the version itself.
 
-**They are for genuinely new ledgers only.** Rebuilding a parsed ledger through
-`createLedger` would discard the file's real version and reintroduce the exact bug task #12
+**They are for genuinely new weekspans only.** Rebuilding a parsed weekspan through
+`createWeekspan` would discard the file's real version and reintroduce the exact bug task #12
 removed — that is called out in the module doc.
 
 ### Version handling — RESOLVED (task #12)
 
-`serialize` now writes `ledger.version` verbatim; likewise `serializeArchive`. `$schema` and
+`serialize` now writes `weekspan.version` verbatim; likewise `serializeArchive`. `$schema` and
 `$agent` are still force-written, since they are advisory strings with no correctness role.
 Full contract in `MIGRATIONS.md`.
 
@@ -245,13 +245,13 @@ invariant being guarded, but it is not an end-to-end path.
 
 ## `$schema` — RESOLVED (task #13)
 
-`SCHEMA_URI` is now `'./ledger.schema.json'` — a relative path resolved beside the ledger
-file. The old value was `https://murch-todo.dev/schema/ledger-v1.json`, a placeholder invented
+`SCHEMA_URI` is now `'./weekspan.schema.json'` — a relative path resolved beside the weekspan
+file. The old value was `https://murch-todo.dev/schema/weekspan-v1.json`, a placeholder invented
 during the build: nobody owned the domain and nothing was published there. Since editors
 actually fetch `$schema` for validation and autocomplete, that was a broken promise to tooling
 aimed at a domain a third party could have registered.
 
-**Generated, never hand-written.** `scripts/generate-schema.ts` emits `ledger.schema.json` from
+**Generated, never hand-written.** `scripts/generate-schema.ts` emits `weekspan.schema.json` from
 `types.ts` via `ts-json-schema-generator` (`npm run generate:schema`). A hand-maintained schema
 drifts from the types, which is the entire tax this approach avoids.
 
@@ -281,7 +281,7 @@ file. Then ajv validation tests prove the schema actually *enforces* the contrac
 merely being shaped plausibly — a skip without provenance, a due carrying provenance, an item
 missing `rank`, and a bad date key all must fail.
 
-The invalid-data cases are built as loose object literals rather than typed `Ledger` values,
+The invalid-data cases are built as loose object literals rather than typed `Weekspan` values,
 deliberately: TypeScript won't let you construct them at all, which is the point — the schema
 has to catch what the type system only catches for callers already writing TypeScript.
 
@@ -305,13 +305,13 @@ run here does not imply a clean typecheck.
 
 ---
 
-# `@murch-todo/cli`
+# `@weekspan/cli`
 
 ## Packaging
 
-**esbuild bundle, not a two-stage compile.** `ledger-core` exports TypeScript source
+**esbuild bundle, not a two-stage compile.** `weekspan-core` exports TypeScript source
 (`main: ./src/index.ts`) — good for vitest and for the web app's bundler, but node cannot run
-it directly. Bundling the CLI resolves that at build time instead of forcing `ledger-core` to
+it directly. Bundling the CLI resolves that at build time instead of forcing `weekspan-core` to
 also emit `dist/`, or making `tsx` a runtime dependency and paying its startup cost on every
 invocation. Output is one ~5KB file with a shebang.
 
@@ -319,12 +319,12 @@ invocation. Output is one ~5KB file with a shebang.
 a tool agents install transiently via `npx`, so install weight is a real cost, and the surface
 is small enough that a framework would be more indirection than it removes.
 
-## Ledger path resolution
+## Weekspan path resolution
 
-`--ledger` → `$LEDGER_FILE` → `~/.ledgerrc` → `~/todo/personal.ledger.json`.
+`--weekspan` → `$WEEKSPAN_FILE` → `~/.weekspanrc` → `~/todo/personal.weekspan.json`.
 
 **Deliberately no search up the current directory tree**, which is the usual convention for dev
-tools. The ledger lives in a synced folder (Drive, Dropbox) that has nothing to do with wherever
+tools. The weekspan lives in a synced folder (Drive, Dropbox) that has nothing to do with wherever
 a command is run from, so cwd carries no signal — and a cwd-sensitive default would make the
 same command write to different files depending on where it happened to be invoked. For an
 agent running commands from arbitrary directories, that is a silent-wrong-file hazard.
@@ -340,16 +340,16 @@ whether to retry, fix its input, or stop.
 
 ## `today` is resolved once, by the dispatcher
 
-Commands never read the clock; `today` is passed down, mirroring `ledger-core` where every
+Commands never read the clock; `today` is passed down, mirroring `weekspan-core` where every
 date-dependent function takes it as a parameter. `--today` overrides it for testing.
 
-The dispatcher derives it from **local** time, not UTC. `ledger-core` does its arithmetic in
+The dispatcher derives it from **local** time, not UTC. `weekspan-core` does its arithmetic in
 UTC, but *which day it currently is* is a local question — a user in UTC+13 marking something
 done at 9am must not have it land on yesterday.
 
 ## File I/O — the risky layer (task #15)
 
-`ledger-core` is pure and exhaustively tested, so essentially every genuinely new bug lives here.
+`weekspan-core` is pure and exhaustively tested, so essentially every genuinely new bug lives here.
 
 **Staleness is detected by comparing file CONTENT, not mtime.** Many filesystems report mtime at
 1-second granularity, so two writes inside the same second are indistinguishable by `stat` — and
@@ -368,18 +368,18 @@ replicates to every device within seconds, so a partial write is not a local pro
 needs a lock file, which brings its own failure mode (stale locks after a crash). For one user
 across a laptop, a phone and an occasional agent, a microsecond window is not worth that.
 
-**Merge on conflict, never clobber.** A detected concurrent change triggers ledger-core's
+**Merge on conflict, never clobber.** A detected concurrent change triggers weekspan-core's
 three-way merge with the loaded baseline. `SaveResult.conflicts` is returned so commands can
 surface it — the CLI is the first consumer of `MergeResult.conflicts`, which until now went
 nowhere.
 
-**Refusals that protect data:** `createLedgerFile` will not overwrite an existing ledger, and
+**Refusals that protect data:** `createWeekspanFile` will not overwrite an existing weekspan, and
 `writeArchive` will not overwrite an already-closed week. `ensureSchemaFile` never overwrites
 either, since a newer app version may have written a newer schema.
 
 **A `FutureVersionError` message deliberately suggests nothing that writes.** An older client
 "fixing" a newer file would drop fields it does not understand and replicate that loss to every
-device. There is a test asserting the message does not mention `ledger init`.
+device. There is a test asserting the message does not mention `weekspan init`.
 
 ## Output layer and the JSON contract (task #17)
 
@@ -399,13 +399,13 @@ string alongside the number is additive and cheap now; changing this shape later
 agents will already be parsing it.
 
 **Hard rules the layer enforces:**
-- Data on stdout, diagnostics on stderr, never interleaved — so `ledger list --json | jq` keeps
+- Data on stdout, diagnostics on stderr, never interleaved — so `weekspan list --json | jq` keeps
   working even when a warning fires. There is a test for exactly that regression.
 - Under `--json`, `error()` writes the envelope to stdout AND the plain message to stderr, so a
   piped consumer always receives exactly one JSON object rather than nothing.
 - Colour is decided ONCE at `createOutput()` from `NO_COLOR` and TTY-ness, never re-sniffed per
   call, and is injectable so tests never depend on the ambient terminal.
-- Derived state renders through ledger-core's `rowStyle`, and always carries a plain-text marker
+- Derived state renders through weekspan-core's `rowStyle`, and always carries a plain-text marker
   (`✓` finished, `~` skipped, ` ` open) in addition to any styling — ANSI is invisible to agents
   and to piped output, so styling alone would make the three states indistinguishable there.
 - `skipped` never receives the strikethrough sequence, only italic + dim. Locked down by test.
@@ -414,7 +414,7 @@ agents will already be parsing it.
 
 **`resolve.ts` — item lookup.** Exact id wins; otherwise a case-insensitive title match,
 preferring prefix over substring. An ambiguous query is an ERROR listing candidates, never a
-guess: `ledger done proj` silently completing the wrong row is invisible at the time and, once
+guess: `weekspan done proj` silently completing the wrong row is invisible at the time and, once
 the week closes, effectively permanent. Agents should pass ids.
 
 **`session.ts` — the mutation wrapper.** Every mutating command goes through `mutate()`, so
@@ -434,8 +434,8 @@ end-to-end. Every module typechecked and passed its own tests first. This is the
 in this project that composition found what isolation could not.
 
 **1. Global flags leaked into command argv.** Commands parse with `strict: false` so they can
-ignore flags they do not know — but an undeclared `--ledger /path` does not vanish: `parseArgs`
-returns the VALUE as a positional. So `ledger add "buy milk" --ledger ~/x.json` created an item
+ignore flags they do not know — but an undeclared `--weekspan /path` does not vanish: `parseArgs`
+returns the VALUE as a positional. So `weekspan add "buy milk" --weekspan ~/x.json` created an item
 titled `buy milk /Users/me/x.json`. Fixed with `stripGlobals()` in the dispatcher, so every
 command sees only its own arguments and global flags work in any position.
 
@@ -455,13 +455,13 @@ here than mine.
 
 ## Agent discovery (task #23)
 
-`ledger init` provisions the whole folder: the ledger, `ledger.schema.json`, `AGENTS.md`, and
+`weekspan init` provisions the whole folder: the weekspan, `weekspan.schema.json`, `AGENTS.md`, and
 `CLAUDE.md`. None of them are ever overwritten — a user may have their own instructions there.
 
 `CLAUDE.md` is a POINTER to `AGENTS.md`, not a copy. Two verbatim copies of the same rules drift
 the moment one is edited.
 
-Plus `.claude/skills/ledger/SKILL.md`, which bundles the CLI rather than only describing it.
+Plus `.claude/skills/weekspan/SKILL.md`, which bundles the CLI rather than only describing it.
 
 The docs deliberately lead with *why hand-editing corrupts the file* — derived finished state,
 generated-not-stored occurrences, fractional ranks, required skip provenance — because an agent

@@ -1,7 +1,7 @@
 import { deepEqual, isUnchanged, merge } from './merge.js'
-import type { Item, Ledger, Mark } from './types.js'
+import type { Item, Weekspan, Mark } from './types.js'
 
-function ledger(items: Item[], over: Partial<Ledger> = {}): Ledger {
+function weekspan(items: Item[], over: Partial<Weekspan> = {}): Weekspan {
   return {
     version: 1,
     closedThrough: null,
@@ -38,7 +38,7 @@ describe('deepEqual', () => {
 
 describe('merge — the common single-user case', () => {
   it('takes the one side that moved, without calling it a conflict', () => {
-    const base = ledger([item('a', { title: 'draft perf feedback' })])
+    const base = weekspan([item('a', { title: 'draft perf feedback' })])
     const ours = clone(base)
     const theirs = clone(base)
     ours.items[0]!.title = 'draft perf feedback — 4 reports'
@@ -49,7 +49,7 @@ describe('merge — the common single-user case', () => {
   })
 
   it('accepts their edit when we did not touch it', () => {
-    const base = ledger([item('a', { title: 'old' })])
+    const base = weekspan([item('a', { title: 'old' })])
     const ours = clone(base)
     const theirs = clone(base)
     theirs.items[0]!.title = 'new'
@@ -62,7 +62,7 @@ describe('merge — the common single-user case', () => {
   it('merges cell by cell — laptop marks Tuesday, phone marks Thursday', () => {
     // This is the payoff over file-level last-writer-wins: neither edit is lost,
     // even though both devices rewrote the same item in the same file.
-    const base = ledger([item('a')])
+    const base = weekspan([item('a')])
     const ours = clone(base)
     const theirs = clone(base)
     ours.items[0]!.marks['2026-08-25'] = done
@@ -78,7 +78,7 @@ describe('merge — the common single-user case', () => {
   })
 
   it('reports a genuine same-cell conflict and resolves toward ours', () => {
-    const base = ledger([item('a', { marks: { '2026-08-26': due } })])
+    const base = weekspan([item('a', { marks: { '2026-08-26': due } })])
     const ours = clone(base)
     const theirs = clone(base)
     ours.items[0]!.marks['2026-08-26'] = done
@@ -92,7 +92,7 @@ describe('merge — the common single-user case', () => {
   })
 
   it('merges a cell deletion against an untouched cell', () => {
-    const base = ledger([item('a', { marks: { '2026-08-26': due, '2026-08-27': due } })])
+    const base = weekspan([item('a', { marks: { '2026-08-26': due, '2026-08-27': due } })])
     const ours = clone(base)
     const theirs = clone(base)
     delete ours.items[0]!.marks['2026-08-26']
@@ -105,9 +105,9 @@ describe('merge — the common single-user case', () => {
 
 describe('merge — adds and deletes', () => {
   it('keeps items added on either side', () => {
-    const base = ledger([item('a')])
-    const ours = ledger([item('a'), item('b', { rank: 'k' })])
-    const theirs = ledger([item('a'), item('c', { rank: 'm' })])
+    const base = weekspan([item('a')])
+    const ours = weekspan([item('a'), item('b', { rank: 'k' })])
+    const theirs = weekspan([item('a'), item('c', { rank: 'm' })])
 
     const r = merge(base, ours, theirs)
     expect(r.merged.items.map((i) => i.id).sort()).toEqual(['a', 'b', 'c'])
@@ -115,8 +115,8 @@ describe('merge — adds and deletes', () => {
   })
 
   it('applies a deletion when the other side left it untouched', () => {
-    const base = ledger([item('a'), item('b', { rank: 'k' })])
-    const ours = ledger([item('a')])
+    const base = weekspan([item('a'), item('b', { rank: 'k' })])
+    const ours = weekspan([item('a')])
     const theirs = clone(base)
 
     const r = merge(base, ours, theirs)
@@ -126,10 +126,10 @@ describe('merge — adds and deletes', () => {
 
   it('lets an edit beat a delete, in both directions', () => {
     // Losing work silently is worse than a stray row the user can delete again.
-    const base = ledger([item('a'), item('b', { rank: 'k', title: 'b' })])
+    const base = weekspan([item('a'), item('b', { rank: 'k', title: 'b' })])
 
-    const oursEdited = ledger([item('a'), item('b', { rank: 'k', title: 'b edited' })])
-    const theirsDeleted = ledger([item('a')])
+    const oursEdited = weekspan([item('a'), item('b', { rank: 'k', title: 'b edited' })])
+    const theirsDeleted = weekspan([item('a')])
     const r1 = merge(base, oursEdited, theirsDeleted)
     expect(r1.merged.items.map((i) => i.id)).toEqual(['a', 'b'])
     expect(r1.merged.items[1]!.title).toBe('b edited')
@@ -140,9 +140,9 @@ describe('merge — adds and deletes', () => {
   })
 
   it('marking a cell counts as an edit that beats a delete', () => {
-    const base = ledger([item('a', { rank: 'k' })])
-    const ours = ledger([item('a', { rank: 'k', marks: { '2026-08-26': done } })])
-    const theirs = ledger([])
+    const base = weekspan([item('a', { rank: 'k' })])
+    const ours = weekspan([item('a', { rank: 'k', marks: { '2026-08-26': done } })])
+    const theirs = weekspan([])
 
     const r = merge(base, ours, theirs)
     expect(r.merged.items).toHaveLength(1)
@@ -150,27 +150,27 @@ describe('merge — adds and deletes', () => {
   })
 })
 
-describe('merge — ledger-level fields', () => {
+describe('merge — weekspan-level fields', () => {
   it('takes the later closedThrough, because close-out never reverses', () => {
-    const base = ledger([], { closedThrough: '2026-W33' })
-    const ours = ledger([], { closedThrough: '2026-W34' })
-    const theirs = ledger([], { closedThrough: '2026-W35' })
+    const base = weekspan([], { closedThrough: '2026-W33' })
+    const ours = weekspan([], { closedThrough: '2026-W34' })
+    const theirs = weekspan([], { closedThrough: '2026-W35' })
 
     expect(merge(base, ours, theirs).merged.closedThrough).toBe('2026-W35')
     expect(merge(base, theirs, ours).merged.closedThrough).toBe('2026-W35')
   })
 
   it('treats a null closedThrough as earlier than any week', () => {
-    const base = ledger([], { closedThrough: null })
-    const ours = ledger([], { closedThrough: null })
-    const theirs = ledger([], { closedThrough: '2026-W35' })
+    const base = weekspan([], { closedThrough: null })
+    const ours = weekspan([], { closedThrough: null })
+    const theirs = weekspan([], { closedThrough: '2026-W35' })
     expect(merge(base, ours, theirs).merged.closedThrough).toBe('2026-W35')
   })
 
   it('unions vacation additions but honours a removal from either side', () => {
-    const base = ledger([], { vacationDays: ['2026-08-24'] })
-    const ours = ledger([], { vacationDays: ['2026-08-24', '2026-08-25'] })
-    const theirs = ledger([], { vacationDays: ['2026-08-26'] }) // removed the 24th
+    const base = weekspan([], { vacationDays: ['2026-08-24'] })
+    const ours = weekspan([], { vacationDays: ['2026-08-24', '2026-08-25'] })
+    const theirs = weekspan([], { vacationDays: ['2026-08-26'] }) // removed the 24th
 
     const r = merge(base, ours, theirs)
     expect(r.merged.vacationDays).toEqual(['2026-08-25', '2026-08-26'])
@@ -179,14 +179,14 @@ describe('merge — ledger-level fields', () => {
 
 describe('merge — output shape', () => {
   it('returns items sorted by rank', () => {
-    const base = ledger([])
-    const ours = ledger([item('z', { rank: 'z' }), item('a', { rank: 'A' })])
-    const theirs = ledger([])
+    const base = weekspan([])
+    const ours = weekspan([item('z', { rank: 'z' }), item('a', { rank: 'A' })])
+    const theirs = weekspan([])
     expect(merge(base, ours, theirs).merged.items.map((i) => i.id)).toEqual(['a', 'z'])
   })
 
   it('is idempotent — merging an already-merged state changes nothing', () => {
-    const base = ledger([item('a')])
+    const base = weekspan([item('a')])
     const ours = clone(base)
     ours.items[0]!.marks['2026-08-25'] = done
     const theirs = clone(base)
@@ -198,7 +198,7 @@ describe('merge — output shape', () => {
   })
 
   it('detects an untouched remote file so the caller can skip merging', () => {
-    const base = ledger([item('a', { marks: { '2026-08-26': due } })])
+    const base = weekspan([item('a', { marks: { '2026-08-26': due } })])
     expect(isUnchanged(base, clone(base))).toBe(true)
     const changed = clone(base)
     changed.items[0]!.marks['2026-08-26'] = done

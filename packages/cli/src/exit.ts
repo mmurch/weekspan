@@ -14,7 +14,7 @@ export const EXIT = {
   USAGE: 2,
   /** The action was refused for a domain reason: week not closeable, merge conflicts, vacation day. */
   CONFLICT: 3,
-  /** The ledger file is missing, unreadable, malformed, or written by a newer version. */
+  /** The weekspan file is missing, unreadable, malformed, or written by a newer version. */
   FILE: 4,
 } as const
 

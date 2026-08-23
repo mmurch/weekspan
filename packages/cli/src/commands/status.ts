@@ -1,5 +1,5 @@
 /**
- * `ledger status` — "what do I need to do to move forward?"
+ * `weekspan status` — "what do I need to do to move forward?"
  *
  * Read-only. The one command an agent should call first to orient itself.
  */
@@ -7,8 +7,8 @@ import {
   computeWindow,
   displayState,
   isCloseable,
-  type Ledger,
-} from '@murch-todo/ledger-core'
+  type Weekspan,
+} from '@weekspan/weekspan-core'
 import type { Command, CommandContext } from '../command.js'
 import { EXIT, type ExitCode } from '../exit.js'
 import { createOutput, type Output } from '../output.js'
@@ -18,12 +18,12 @@ export async function runStatus(
   ctx: CommandContext,
   out: Output = createOutput({ json: ctx.json }),
 ): Promise<ExitCode> {
-  const ledger: Ledger = await read(ctx)
-  const window = computeWindow(ledger, ctx.today)
+  const weekspan: Weekspan = await read(ctx)
+  const window = computeWindow(weekspan, ctx.today)
   const oldest = window.weeks.find((w) => w.isOldestUnclosed)
 
   const counts = { open: 0, finished: 0, skipped: 0, recurring: 0 }
-  for (const item of ledger.items) {
+  for (const item of weekspan.items) {
     if (item.recurrence) counts.recurring++
     counts[displayState(item, ctx.today)]++
   }
@@ -37,7 +37,7 @@ export async function runStatus(
   let generated: Array<{ itemId: string; date: string; title: string }> = []
 
   if (oldest && oldest.isPast) {
-    const result = isCloseable(ledger, oldest.week, ctx.today)
+    const result = isCloseable(weekspan, oldest.week, ctx.today)
     closeable = result.closeable
     explicit = result.blockers
       .filter((b) => b.kind === 'explicit')
@@ -57,7 +57,7 @@ export async function runStatus(
   if (!oldest || !oldest.isPast) {
     lines.push('No past week awaiting close-out.')
   } else if (closeable) {
-    lines.push(`${oldest.week} is ready to close:  ledger close-out`)
+    lines.push(`${oldest.week} is ready to close:  weekspan close-out`)
   } else {
     lines.push(`${oldest.week} cannot close yet:`)
     for (const b of explicit) {
@@ -83,6 +83,6 @@ export async function runStatus(
 export const statusCommand: Command = {
   name: 'status',
   summary: 'Show the window, counts, and what blocks close-out',
-  usage: 'ledger status [--json]',
+  usage: 'weekspan status [--json]',
   run: (ctx) => runStatus(ctx),
 }

@@ -1,5 +1,5 @@
 /**
- * The ledger schema.
+ * The weekspan schema.
  *
  * Key naming is camelCase in BOTH the TypeScript types and the on-disk JSON.
  * The handoff used snake_case (`parent_id`, `done_on`), but a key-mapping layer
@@ -24,7 +24,7 @@ export type MarkKind = 'due' | 'done' | 'skip'
  *
  * `deliberate` — the user chose to skip while present.
  * `auto`       — auto-close resolved an unresolved recurring occurrence during
- *                catch-up, because returning to a neglected ledger must never
+ *                catch-up, because returning to a neglected weekspan must never
  *                cost more than a glance.
  *
  * Skip-streak surfacing must count only `deliberate` skips. Without this split,
@@ -100,8 +100,8 @@ export interface Project {
   colorToken: string
 }
 
-/** The working ledger file. */
-export interface Ledger {
+/** The working weekspan file. */
+export interface Weekspan {
   /** Advisory pointer for editors/agents. */
   $schema?: string
   /** Loud warning for any agent that meets this file with no folder context. */
@@ -129,4 +129,4 @@ export interface ArchiveFile {
 }
 
 export const AGENT_WARNING =
-  'Do not hand-edit; run `npx ledger --help` or see ./AGENTS.md'
+  'Do not hand-edit; run `npx weekspan --help` or see ./AGENTS.md'

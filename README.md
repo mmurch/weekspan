@@ -1,18 +1,18 @@
-# murch-todo
+# Weekspan
 
-A personal task ledger that replaces a Google Sheet. One row per task, one column per calendar
+A personal task grid that replaces a Google Sheet. One row per task, one column per calendar
 day; a cell is a completion, a `DUE` marker, or a skip.
 
-No server, no accounts. The ledger is a JSON file in a folder you already sync (Drive, Dropbox,
+No server, no accounts. The file is plain JSON in a folder you already sync (Drive, Dropbox,
 iCloud), so multi-device works without a backend and agents can edit it through a CLI.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `packages/ledger-core` | All domain logic. Pure — no I/O, no clock. 232 tests. |
-| `packages/cli` | `ledger` command. The sanctioned write path for agents. 176 tests. |
-| `design_handoff_todo_ledger/` | Original design handoff (mockups, screenshots, spec). |
+| `packages/weekspan-core` | All domain logic. Pure — no I/O, no clock. 232 tests. |
+| `packages/cli` | `weekspan` command. The sanctioned write path for agents. 176 tests. |
+| `design_handoff_todo_ledger/` | Original design handoff (mockups, screenshots, spec). Retains its original naming as a received artifact — it predates the Weekspan name. |
 | `ARCHITECTURE.md` | Every design decision and why. Supersedes the handoff where they conflict. |
 | `IMPLEMENTATION-NOTES.md` | Decisions made while building, plus every bug found and how. |
 | `MIGRATIONS.md` | The schema version contract. Read before bumping `SCHEMA_VERSION`. |
@@ -29,12 +29,12 @@ Build and use the CLI:
 
 ```bash
 cd packages/cli && npm run build
-node dist/index.js init --ledger ~/todo/personal.ledger.json
+node dist/index.js init --weekspan ~/todo/personal.weekspan.json
 node dist/index.js add "choose stick-on tiles" --due thu
 node dist/index.js status
 ```
 
-`ledger init` also writes `AGENTS.md`, `CLAUDE.md`, and `ledger.schema.json` beside the ledger,
+`weekspan init` also writes `AGENTS.md`, `CLAUDE.md`, and `weekspan.schema.json` beside the file,
 so any agent pointed at that folder learns the rules without being told.
 
 ## Core ideas
@@ -52,5 +52,5 @@ so any agent pointed at that folder learns the rules without being told.
 
 ## Status
 
-`ledger-core` and the CLI are complete and tested. The web app is not built — the grid is the
+`weekspan-core` and the CLI are complete and tested. The web app is not built — the grid is the
 main remaining engineering risk (wrapping rows that stay column-aligned across the whole table).

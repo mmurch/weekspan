@@ -1,4 +1,4 @@
-import type { Item, Ledger } from '@murch-todo/ledger-core'
+import type { Item, Weekspan } from '@weekspan/weekspan-core'
 import { CliError, EXIT } from './exit.js'
 
 /**
@@ -9,23 +9,23 @@ import { CliError, EXIT } from './exit.js'
  * human case, and letting a substring beat it would make short queries surprising.
  *
  * An ambiguous query is an ERROR listing the candidates, never a guess. Silently
- * acting on the wrong task is the worst failure this CLI can have: `ledger done proj`
+ * acting on the wrong task is the worst failure this CLI can have: `weekspan done proj`
  * quietly completing the wrong row is both invisible and, once the week closes,
  * effectively permanent. Agents should pass ids; the fuzzy path is for humans.
  */
-export function resolveItem(ledger: Ledger, query: string): Item {
+export function resolveItem(weekspan: Weekspan, query: string): Item {
   const q = query.trim()
   if (q === '') throw new CliError('No item given.', EXIT.USAGE)
 
-  const byId = ledger.items.find((i) => i.id === q)
+  const byId = weekspan.items.find((i) => i.id === q)
   if (byId) return byId
 
   const lower = q.toLowerCase()
-  const prefix = ledger.items.filter((i) => i.title.toLowerCase().startsWith(lower))
+  const prefix = weekspan.items.filter((i) => i.title.toLowerCase().startsWith(lower))
   const candidates =
     prefix.length > 0
       ? prefix
-      : ledger.items.filter((i) => i.title.toLowerCase().includes(lower))
+      : weekspan.items.filter((i) => i.title.toLowerCase().includes(lower))
 
   if (candidates.length === 1) return candidates[0]!
 

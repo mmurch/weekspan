@@ -1,7 +1,7 @@
-import type { Ledger } from '@murch-todo/ledger-core'
+import type { Weekspan } from '@weekspan/weekspan-core'
 import type { CommandContext } from './command.js'
 import { EXIT, type ExitCode } from './exit.js'
-import { loadLedger, saveLedger } from './io.js'
+import { loadWeekspan, saveWeekspan } from './io.js'
 import type { Output } from './output.js'
 
 /**
@@ -13,27 +13,27 @@ import type { Output } from './output.js'
  * would silently discard another device's edit — invisibly, and with no way for
  * the user to discover it later.
  *
- * `apply` returns the next ledger, or `null` to mean "nothing to do". Returning
+ * `apply` returns the next weekspan, or `null` to mean "nothing to do". Returning
  * null writes nothing at all: no file touch, no mtime change, no diff in a synced
  * folder. `minimalMoveRank` returning null is exactly this case.
  */
 export async function mutate(
   ctx: CommandContext,
   out: Output,
-  apply: (ledger: Ledger) => Ledger | null,
-): Promise<{ code: ExitCode; ledger: Ledger; written: boolean }> {
-  const loaded = await loadLedger(ctx.ledgerPath)
-  const next = apply(loaded.ledger)
+  apply: (weekspan: Weekspan) => Weekspan | null,
+): Promise<{ code: ExitCode; weekspan: Weekspan; written: boolean }> {
+  const loaded = await loadWeekspan(ctx.weekspanPath)
+  const next = apply(loaded.weekspan)
 
   if (next === null) {
-    return { code: EXIT.OK, ledger: loaded.ledger, written: false }
+    return { code: EXIT.OK, weekspan: loaded.weekspan, written: false }
   }
 
-  const result = await saveLedger(loaded, next)
+  const result = await saveWeekspan(loaded, next)
 
   if (result.merged) {
     out.warn(
-      `Another writer changed ${ctx.ledgerPath} while this command ran; changes were merged.`,
+      `Another writer changed ${ctx.weekspanPath} while this command ran; changes were merged.`,
     )
   }
 
@@ -47,10 +47,10 @@ export async function mutate(
     )
   }
 
-  return { code: EXIT.OK, ledger: result.written ? next : loaded.ledger, written: result.written }
+  return { code: EXIT.OK, weekspan: result.written ? next : loaded.weekspan, written: result.written }
 }
 
 /** Read-only load, for commands that never write. */
-export async function read(ctx: CommandContext): Promise<Ledger> {
-  return (await loadLedger(ctx.ledgerPath)).ledger
+export async function read(ctx: CommandContext): Promise<Weekspan> {
+  return (await loadWeekspan(ctx.weekspanPath)).weekspan
 }

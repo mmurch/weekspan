@@ -1,5 +1,5 @@
 /**
- * `ledger status` — see e2e.test.ts for the fixture style this copies:
+ * `weekspan status` — see e2e.test.ts for the fixture style this copies:
  * `mkdtempSync` temp dir, `capture()` over `PassThrough` streams, `ctx()`
  * builder, `onDisk()` reader.
  */
@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import type { Ledger } from '@murch-todo/ledger-core'
+import type { Weekspan } from '@weekspan/weekspan-core'
 import type { CommandContext } from '../command.js'
 import { createOutput, type Output } from '../output.js'
 import { runInit } from './init.js'
@@ -18,11 +18,11 @@ import { runCellCommand } from './cells.js'
 const TODAY = '2026-08-26' // Wednesday, 2026-W35
 
 let dir: string
-let ledgerPath: string
+let weekspanPath: string
 
 beforeEach(() => {
-  dir = mkdtempSync(path.join(tmpdir(), 'ledger-status-'))
-  ledgerPath = path.join(dir, 'l.json')
+  dir = mkdtempSync(path.join(tmpdir(), 'weekspan-status-'))
+  weekspanPath = path.join(dir, 'l.json')
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -47,15 +47,15 @@ function capture(json = false): Captured {
 }
 
 function ctx(argv: string[], json = false): CommandContext {
-  return { ledgerPath, json, today: TODAY, argv }
+  return { weekspanPath, json, today: TODAY, argv }
 }
 
-function onDisk(): Ledger {
-  return JSON.parse(readFileSync(ledgerPath, 'utf8')) as Ledger
+function onDisk(): Weekspan {
+  return JSON.parse(readFileSync(weekspanPath, 'utf8')) as Weekspan
 }
 
-function writeDisk(l: Ledger): void {
-  writeFileSync(ledgerPath, JSON.stringify(l, null, 2), 'utf8')
+function writeDisk(l: Weekspan): void {
+  writeFileSync(weekspanPath, JSON.stringify(l, null, 2), 'utf8')
 }
 
 async function init(): Promise<void> {
@@ -166,7 +166,7 @@ describe('a closeable past week', () => {
 
     const c = capture()
     await runStatus(ctx([]), c.out)
-    expect(c.stdout()).toMatch(/2026-W34 is ready to close:\s+ledger close-out/)
+    expect(c.stdout()).toMatch(/2026-W34 is ready to close:\s+weekspan close-out/)
   })
 })
 
@@ -204,11 +204,11 @@ describe('status never writes', () => {
   it('leaves the file byte-identical before and after', async () => {
     await init()
     await runAdd(ctx(['a task', '--due', '2026-08-19']), capture().out)
-    const before = readFileSync(ledgerPath, 'utf8')
+    const before = readFileSync(weekspanPath, 'utf8')
 
     await runStatus(ctx([]), capture().out)
     await runStatus(ctx([], true), capture(true).out)
 
-    expect(readFileSync(ledgerPath, 'utf8')).toBe(before)
+    expect(readFileSync(weekspanPath, 'utf8')).toBe(before)
   })
 })

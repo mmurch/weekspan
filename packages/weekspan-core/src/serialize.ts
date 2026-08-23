@@ -1,5 +1,5 @@
 /**
- * Deterministic, byte-stable serialization of the ledger schema.
+ * Deterministic, byte-stable serialization of the weekspan schema.
  *
  * "Byte-stable" is load-bearing (see ARCHITECTURE.md "Format"): two clients
  * writing identical logical state must produce identical bytes, or file sync
@@ -10,12 +10,12 @@
  *     objects field-by-field in a chosen order)
  *   - collections sorted by an explicit, locale-independent comparator
  *   - `$schema` / `$agent` are always forced to canonical constants, never
- *     taken from the input, so two ledgers that differ only in those headers
+ *     taken from the input, so two weekspans that differ only in those headers
  *     still serialize identically. `version` is the one exception: it
  *     describes the shape of the data in the file (see MIGRATIONS.md) and is
  *     always written verbatim from the input. Only a migration may change
  *     it — `serialize` must never substitute `SCHEMA_VERSION` for it, or a
- *     v1-shaped ledger could get silently re-labeled as v2 on an unrelated
+ *     v1-shaped weekspan could get silently re-labeled as v2 on an unrelated
  *     edit.
  *   - optional fields are omitted from the output when `undefined`; fields
  *     whose type allows `null` (`parentId`, `projectId`, `recurrence`,
@@ -23,25 +23,25 @@
  *     state distinct from "field absent"
  */
 
-import type { ArchiveFile, IsoDate, Item, Ledger, Link, Mark, Project, Recurrence } from './types.js'
+import type { ArchiveFile, IsoDate, Item, Weekspan, Link, Mark, Project, Recurrence } from './types.js'
 import { AGENT_WARNING } from './types.js'
 
 /**
- * Advisory `$schema` pointer written into every ledger/archive file header.
+ * Advisory `$schema` pointer written into every weekspan/archive file header.
  * Not defined elsewhere in the codebase; picked here since it's purely
  * advisory (per types.ts) and always forced on write regardless of what an
- * in-memory `Ledger.$schema` happens to hold.
+ * in-memory `Weekspan.$schema` happens to hold.
  *
  * Relative, not a URL: nobody owns a domain to host this at, and a relative
  * path fits the "files in a folder" architecture — editors resolve a
  * relative `$schema` against the file's own location with no hosting or DNS
- * involved. The referenced file, `ledger.schema.json`, is GENERATED from
+ * involved. The referenced file, `weekspan.schema.json`, is GENERATED from
  * `types.ts` by `scripts/generate-schema.ts` (`npm run generate:schema`);
  * see that script's header comment and `src/schema.test.ts` for how drift
  * between the two is caught. It describes the current `SCHEMA_VERSION`
  * shape only — see MIGRATIONS.md before this needs a versioned filename.
  */
-export const SCHEMA_URI = './ledger.schema.json'
+export const SCHEMA_URI = './weekspan.schema.json'
 
 type Json = Record<string, unknown>
 
@@ -120,16 +120,16 @@ function projectsToJSON(projects: Project[]): Json[] {
   return [...projects].sort((a, b) => compareStrings(a.id, b.id)).map(projectToJSON)
 }
 
-/** Serialize the working ledger file. 2-space indent, trailing newline. */
-export function serialize(ledger: Ledger): string {
+/** Serialize the working weekspan file. 2-space indent, trailing newline. */
+export function serialize(weekspan: Weekspan): string {
   const out: Json = {}
   out.$schema = SCHEMA_URI
   out.$agent = AGENT_WARNING
-  out.version = ledger.version
-  out.closedThrough = ledger.closedThrough
-  out.vacationDays = [...ledger.vacationDays].sort(compareStrings)
-  out.projects = projectsToJSON(ledger.projects)
-  out.items = itemsToJSON(ledger.items)
+  out.version = weekspan.version
+  out.closedThrough = weekspan.closedThrough
+  out.vacationDays = [...weekspan.vacationDays].sort(compareStrings)
+  out.projects = projectsToJSON(weekspan.projects)
+  out.items = itemsToJSON(weekspan.items)
   return JSON.stringify(out, null, 2) + '\n'
 }
 

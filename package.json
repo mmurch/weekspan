@@ -1,8 +1,8 @@
 {
-  "name": "murch-todo",
+  "name": "weekspan",
   "version": "0.0.0",
   "private": true,
-  "description": "Personal TODO ledger — rolling multi-week grid over a plain-file ledger",
+  "description": "Personal task grid — one row per task, one column per day, in a plain file",
   "workspaces": [
     "packages/*",
     "apps/*"

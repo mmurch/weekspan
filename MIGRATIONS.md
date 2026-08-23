@@ -7,7 +7,7 @@ breaking schema change lands. Read it BEFORE bumping `SCHEMA_VERSION`.
 
 ## Why this is more dangerous here than in a normal app
 
-There is no server and no central database. The ledger file is truth, and copies of it live
+There is no server and no central database. The weekspan file is truth, and copies of it live
 on every machine the user syncs to, edited by clients that may be different versions of the
 app — plus a CLI, plus whatever agent touched it last. There is no coordinated deploy that
 upgrades everything at once.
@@ -19,7 +19,7 @@ So the file has to carry its own version honestly, and every reader has to act o
 1. **`version` describes the SHAPE OF THE DATA IN THE FILE.** It is not a build number, not
    an app version, and not "the newest version this client knows about."
 
-2. **`serialize` must never invent it.** It writes `ledger.version` verbatim. A serializer
+2. **`serialize` must never invent it.** It writes `weekspan.version` verbatim. A serializer
    that stamps the current constant will happily write `version: 2` onto v1-shaped data
    during any unrelated edit, and every future reader will trust that number. The migration
    that should have run never ran, and nothing anywhere records that it didn't.
@@ -35,7 +35,7 @@ So the file has to carry its own version honestly, and every reader has to act o
    would write the loss back to disk on the next save and destroy data on every synced device.
 
 5. **Archive files carry versions too** (`ArchiveFile.version`) and are written once and then
-   left alone for years. They will drift further behind than the working ledger ever does, so
+   left alone for years. They will drift further behind than the working weekspan ever does, so
    migrations must handle archives, and reading an old archive must not require migrating it
    in place.
 
@@ -43,19 +43,19 @@ So the file has to carry its own version honestly, and every reader has to act o
 
 ```
 read file → parse (returns the file's own version)
-          → migrate(ledger)  // v1→v2→v3…, each step pure, bumping version as it transforms
+          → migrate(weekspan)  // v1→v2→v3…, each step pure, bumping version as it transforms
           → app works on current-shape data
           → serialize (writes whatever version the data now genuinely is)
 ```
 
-Migrations should be a chain of pure `(Ledger) => Ledger` steps keyed by source version, not
+Migrations should be a chain of pure `(Weekspan) => Weekspan` steps keyed by source version, not
 one big conditional. That way each step is independently testable, and a v1 file and a v3
 file both arrive at current shape through the same code path.
 
 ## When you implement this, check these
 
-- [ ] `serialize` writes `ledger.version`, never the constant (task #12)
-- [ ] A helper stamps `SCHEMA_VERSION` for genuinely NEW ledgers, so there is one obvious
+- [ ] `serialize` writes `weekspan.version`, never the constant (task #12)
+- [ ] A helper stamps `SCHEMA_VERSION` for genuinely NEW weekspans, so there is one obvious
       correct way to construct a header
 - [ ] Migration chain is pure functions, one per version step, individually tested
 - [ ] Round-trip test per version: an unmigrated v(n) file survives parse → serialize

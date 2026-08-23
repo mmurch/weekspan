@@ -13,10 +13,10 @@ import {
 /**
  * Recurrence: expand a stored rule into occurrences at read time.
  *
- * The ledger never persists generated occurrences — only the rule (`Recurrence`)
+ * The weekspan never persists generated occurrences — only the rule (`Recurrence`)
  * lives in the file, plus whatever exceptions (done/skip/due marks) the user has
  * made. Every function here is pure and re-derives occurrences from the rule on
- * every call; nothing here mutates or caches into the ledger.
+ * every call; nothing here mutates or caches into the weekspan.
  */
 
 /** Throw a clear error if `rule` is not a well-formed recurrence. */
