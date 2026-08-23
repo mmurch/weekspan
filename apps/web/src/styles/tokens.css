@@ -1,0 +1,257 @@
+/*
+ * Weekspan design tokens.
+ *
+ * Source of truth: design_handoff_todo_ledger/README.md ("Design Tokens" and
+ * "Theme token table" sections) and design_handoff_todo_ledger/Grid Theme.dc.html
+ * (the themable grid — its {{ token }} placeholders are the canonical names).
+ *
+ * Naming convention: every handoff token name maps to a CSS custom property
+ * prefixed `--ws-`, kebab-cased at internal capital letters. E.g.:
+ *   surface     -> --ws-surface
+ *   ink2        -> --ws-ink-2
+ *   hairStrong  -> --ws-hair-strong
+ *   doneBg      -> --ws-done-bg
+ *   barA        -> --ws-bar-a
+ *   doneFgRow   -> --ws-done-fg-row
+ *   vacBg       -> --ws-vac-bg
+ *
+ * Full mapping (handoff name -> CSS variable):
+ *   surface     -> --ws-surface
+ *   panel       -> --ws-panel
+ *   subtle      -> --ws-subtle
+ *   ink         -> --ws-ink
+ *   ink2        -> --ws-ink-2
+ *   ink3        -> --ws-ink-3
+ *   ink4        -> --ws-ink-4
+ *   hair        -> --ws-hair
+ *   hairStrong  -> --ws-hair-strong
+ *   doneBg      -> --ws-done-bg
+ *   doneFg      -> --ws-done-fg
+ *   dueBg       -> --ws-due-bg
+ *   dueFg       -> --ws-due-fg
+ *   todayBg     -> --ws-today-bg
+ *   todayFg     -> --ws-today-fg
+ *   activeBg    -> --ws-active-bg
+ *   activeFg    -> --ws-active-fg
+ *   weekendBg   -> --ws-weekend-bg
+ *   pastTint    -> --ws-past-tint
+ *   todayTint   -> --ws-today-tint
+ *   selBg       -> --ws-sel-bg
+ *   selRing     -> --ws-sel-ring
+ *   hlBg        -> --ws-hl-bg
+ *   chipBg      -> --ws-chip-bg
+ *   linkDot     -> --ws-link-dot
+ *   barA        -> --ws-bar-a
+ *   barB        -> --ws-bar-b
+ *   barC        -> --ws-bar-c
+ *   doneFgRow   -> --ws-done-fg-row
+ *   vacBg       -> --ws-vac-bg
+ *
+ * Themes: Paper (light, default), Solarized dark, Warm dark. Structure,
+ * hierarchy, type scale and all measurements (the geometry tokens below) are
+ * IDENTICAL across themes — only surface/ink/hairline/chip/accent values
+ * change. Geometry is therefore defined exactly once on bare :root and never
+ * overridden per theme.
+ *
+ * Cascade order (matters for correctness):
+ *   1. Bare :root            -> Paper's full palette (nothing is ever undefined)
+ *   2. prefers-color-scheme  -> Warm dark, guarded to skip when data-theme is
+ *                                explicitly "paper" or "solarized" (system
+ *                                preference drives the default "system" choice)
+ *   3. :root[data-theme=...] -> explicit per-theme overrides, always win
+ */
+
+:root {
+  /* ---- Geometry (shared by all themes, never overridden) ---- */
+  --ws-day-col: 38px;
+  --ws-weekend-col: 19px;
+  --ws-weekend-block: 40px;
+  --ws-week-block: 190px;
+  --ws-item-col: 360px;
+  --ws-rail: 46px;
+  --ws-row-min-h: 30px;
+  --ws-chip-h: 25px;
+
+  --ws-radius-1: 3px;
+  --ws-radius-2: 4px;
+  --ws-radius-3: 5px;
+  --ws-radius-4: 6px;
+  --ws-radius-5: 7px;
+  --ws-radius-6: 8px;
+  --ws-radius-chip: var(--ws-radius-3);
+  --ws-radius-btn: var(--ws-radius-4);
+  --ws-radius-menu: var(--ws-radius-5);
+
+  /* ---- Paper (light) — the complete default palette ---- */
+  --ws-surface: #faf9f6;
+  --ws-panel: #ffffff;
+  --ws-subtle: #f4f2ec;
+  --ws-ink: rgba(0, 0, 0, 0.88);
+  --ws-ink-2: rgba(0, 0, 0, 0.72);
+  --ws-ink-3: rgba(0, 0, 0, 0.45);
+  --ws-ink-4: rgba(0, 0, 0, 0.28);
+  --ws-hair: rgba(0, 0, 0, 0.07);
+  --ws-hair-strong: rgba(0, 0, 0, 0.14);
+  --ws-done-bg: oklch(0.88 0.07 155);
+  --ws-done-fg: oklch(0.4 0.09 155);
+  --ws-due-bg: oklch(0.89 0.1 85);
+  --ws-due-fg: oklch(0.42 0.11 70);
+  --ws-today-bg: #1c1b19;
+  --ws-today-fg: #ffffff;
+  --ws-active-bg: #1c1b19;
+  --ws-active-fg: #ffffff;
+  --ws-weekend-bg: rgba(0, 0, 0, 0.035);
+  --ws-past-tint: rgba(0, 0, 0, 0.028);
+  --ws-today-tint: oklch(0.97 0.015 250);
+  --ws-sel-bg: oklch(0.96 0.025 250);
+  --ws-sel-ring: oklch(0.55 0.13 250);
+  --ws-hl-bg: oklch(0.95 0.05 95);
+  --ws-chip-bg: #ffffff;
+  --ws-link-dot: oklch(0.72 0.11 250);
+  --ws-bar-a: oklch(0.62 0.1 210);
+  --ws-bar-b: oklch(0.6 0.11 300);
+  --ws-bar-c: oklch(0.63 0.09 140);
+  --ws-done-fg-row: rgba(0, 0, 0, 0.4);
+  --ws-vac-bg: rgba(0, 0, 0, 0.05);
+}
+
+/* "Match system" (no data-theme attribute set): follow the OS. Skipped when
+   the user has explicitly chosen Paper or Solarized so an explicit pick
+   always wins over the media query in both directions. Warm dark is used as
+   the system-dark default. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="paper"]):not([data-theme="solarized"]) {
+    --ws-surface: #1c1a17;
+    --ws-panel: #232019;
+    --ws-subtle: #2a2621;
+    --ws-ink: #e8e2d6;
+    --ws-ink-2: #c6bdac;
+    --ws-ink-3: #948b7c;
+    --ws-ink-4: #665e51;
+    --ws-hair: rgba(255, 255, 255, 0.07);
+    --ws-hair-strong: rgba(255, 255, 255, 0.16);
+    --ws-done-bg: oklch(0.42 0.08 158);
+    --ws-done-fg: oklch(0.89 0.12 158);
+    --ws-due-bg: oklch(0.45 0.1 76);
+    --ws-due-fg: oklch(0.93 0.1 86);
+    --ws-today-bg: #e8e2d6;
+    --ws-today-fg: #1c1a17;
+    --ws-active-bg: #e8e2d6;
+    --ws-active-fg: #1c1a17;
+    --ws-weekend-bg: rgba(255, 255, 255, 0.035);
+    --ws-past-tint: rgba(0, 0, 0, 0.24);
+    --ws-today-tint: rgba(232, 226, 214, 0.06);
+    --ws-sel-bg: rgba(126, 178, 235, 0.15);
+    --ws-sel-ring: oklch(0.7 0.12 240);
+    --ws-hl-bg: rgba(230, 190, 80, 0.16);
+    --ws-chip-bg: #2a2621;
+    --ws-link-dot: oklch(0.7 0.1 240);
+    --ws-bar-a: oklch(0.68 0.09 210);
+    --ws-bar-b: oklch(0.7 0.1 45);
+    --ws-bar-c: oklch(0.68 0.08 140);
+    --ws-done-fg-row: rgba(232, 226, 214, 0.42);
+    --ws-vac-bg: rgba(255, 255, 255, 0.09);
+  }
+}
+
+/* Explicit theme: Paper (light) */
+:root[data-theme="paper"] {
+  --ws-surface: #faf9f6;
+  --ws-panel: #ffffff;
+  --ws-subtle: #f4f2ec;
+  --ws-ink: rgba(0, 0, 0, 0.88);
+  --ws-ink-2: rgba(0, 0, 0, 0.72);
+  --ws-ink-3: rgba(0, 0, 0, 0.45);
+  --ws-ink-4: rgba(0, 0, 0, 0.28);
+  --ws-hair: rgba(0, 0, 0, 0.07);
+  --ws-hair-strong: rgba(0, 0, 0, 0.14);
+  --ws-done-bg: oklch(0.88 0.07 155);
+  --ws-done-fg: oklch(0.4 0.09 155);
+  --ws-due-bg: oklch(0.89 0.1 85);
+  --ws-due-fg: oklch(0.42 0.11 70);
+  --ws-today-bg: #1c1b19;
+  --ws-today-fg: #ffffff;
+  --ws-active-bg: #1c1b19;
+  --ws-active-fg: #ffffff;
+  --ws-weekend-bg: rgba(0, 0, 0, 0.035);
+  --ws-past-tint: rgba(0, 0, 0, 0.028);
+  --ws-today-tint: oklch(0.97 0.015 250);
+  --ws-sel-bg: oklch(0.96 0.025 250);
+  --ws-sel-ring: oklch(0.55 0.13 250);
+  --ws-hl-bg: oklch(0.95 0.05 95);
+  --ws-chip-bg: #ffffff;
+  --ws-link-dot: oklch(0.72 0.11 250);
+  --ws-bar-a: oklch(0.62 0.1 210);
+  --ws-bar-b: oklch(0.6 0.11 300);
+  --ws-bar-c: oklch(0.63 0.09 140);
+  --ws-done-fg-row: rgba(0, 0, 0, 0.4);
+  --ws-vac-bg: rgba(0, 0, 0, 0.05);
+}
+
+/* Explicit theme: Solarized dark */
+:root[data-theme="solarized"] {
+  --ws-surface: #002b36;
+  --ws-panel: #04303c;
+  --ws-subtle: #073642;
+  --ws-ink: #c3ccc8;
+  --ws-ink-2: #93a1a1;
+  --ws-ink-3: #6d8189;
+  --ws-ink-4: #4e646c;
+  --ws-hair: rgba(147, 161, 161, 0.12);
+  --ws-hair-strong: rgba(147, 161, 161, 0.24);
+  --ws-done-bg: oklch(0.38 0.08 126);
+  --ws-done-fg: oklch(0.87 0.14 122);
+  --ws-due-bg: oklch(0.42 0.1 82);
+  --ws-due-fg: oklch(0.91 0.12 88);
+  --ws-today-bg: #268bd2;
+  --ws-today-fg: #002b36;
+  --ws-active-bg: #93a1a1;
+  --ws-active-fg: #002b36;
+  --ws-weekend-bg: rgba(147, 161, 161, 0.055);
+  --ws-past-tint: rgba(0, 0, 0, 0.22);
+  --ws-today-tint: rgba(38, 139, 210, 0.11);
+  --ws-sel-bg: rgba(38, 139, 210, 0.2);
+  --ws-sel-ring: #268bd2;
+  --ws-hl-bg: rgba(181, 137, 0, 0.22);
+  --ws-chip-bg: #073642;
+  --ws-link-dot: #268bd2;
+  --ws-bar-a: #268bd2;
+  --ws-bar-b: #2aa198;
+  --ws-bar-c: #859900;
+  --ws-done-fg-row: rgba(195, 204, 200, 0.42);
+  --ws-vac-bg: rgba(147, 161, 161, 0.1);
+}
+
+/* Explicit theme: Warm dark */
+:root[data-theme="warm"] {
+  --ws-surface: #1c1a17;
+  --ws-panel: #232019;
+  --ws-subtle: #2a2621;
+  --ws-ink: #e8e2d6;
+  --ws-ink-2: #c6bdac;
+  --ws-ink-3: #948b7c;
+  --ws-ink-4: #665e51;
+  --ws-hair: rgba(255, 255, 255, 0.07);
+  --ws-hair-strong: rgba(255, 255, 255, 0.16);
+  --ws-done-bg: oklch(0.42 0.08 158);
+  --ws-done-fg: oklch(0.89 0.12 158);
+  --ws-due-bg: oklch(0.45 0.1 76);
+  --ws-due-fg: oklch(0.93 0.1 86);
+  --ws-today-bg: #e8e2d6;
+  --ws-today-fg: #1c1a17;
+  --ws-active-bg: #e8e2d6;
+  --ws-active-fg: #1c1a17;
+  --ws-weekend-bg: rgba(255, 255, 255, 0.035);
+  --ws-past-tint: rgba(0, 0, 0, 0.24);
+  --ws-today-tint: rgba(232, 226, 214, 0.06);
+  --ws-sel-bg: rgba(126, 178, 235, 0.15);
+  --ws-sel-ring: oklch(0.7 0.12 240);
+  --ws-hl-bg: rgba(230, 190, 80, 0.16);
+  --ws-chip-bg: #2a2621;
+  --ws-link-dot: oklch(0.7 0.1 240);
+  --ws-bar-a: oklch(0.68 0.09 210);
+  --ws-bar-b: oklch(0.7 0.1 45);
+  --ws-bar-c: oklch(0.68 0.08 140);
+  --ws-done-fg-row: rgba(232, 226, 214, 0.42);
+  --ws-vac-bg: rgba(255, 255, 255, 0.09);
+}

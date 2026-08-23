@@ -1,0 +1,173 @@
+/*
+ * Weekspan global reset + base typography.
+ *
+ * Font stack per the handoff: IBM Plex Sans for UI, IBM Plex Mono for dates,
+ * paths, shortcuts and metadata. Both families are loaded via <link> tags in
+ * index.html — this file only references them, it does not @import or host
+ * them.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  /* Always an explicit token — never transparent, so the page never borrows
+     an unstyled/host background. */
+  background: var(--ws-surface);
+  color: var(--ws-ink);
+  font-family: "IBM Plex Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+img,
+picture,
+svg {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Dates, file paths, keyboard shortcuts and other metadata use the mono
+   family — apply this class wherever the handoff calls for IBM Plex Mono. */
+.ws-mono {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+/* ---- app shell ------------------------------------------------------- */
+
+.ws-app {
+  min-height: 100vh;
+  background: var(--ws-surface);
+  display: flex;
+  flex-direction: column;
+}
+
+/* The grid is wider than most viewports once the window grows past four weeks,
+   so horizontal scrolling lives here rather than on the body. */
+.ws-scroll {
+  overflow-x: auto;
+  flex: 1;
+}
+
+.ws-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--ws-panel);
+  border-bottom: 1px solid var(--ws-hair-strong);
+}
+
+.ws-filepicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-btn);
+  background: var(--ws-subtle);
+  font: 500 12px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink);
+}
+
+.ws-caret { font-size: 9px; color: var(--ws-ink-3); }
+
+.ws-seg {
+  padding: 3px 9px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-2);
+  font: 400 11px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-seg--active {
+  background: var(--ws-active-bg);
+  color: var(--ws-active-fg);
+  border-color: transparent;
+  font-weight: 500;
+}
+
+.ws-filter {
+  flex: 1;
+  max-width: 250px;
+  padding: 4px 9px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-btn);
+  font: 400 11px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-4);
+}
+
+.ws-topbar-spacer { margin-left: auto; }
+
+.ws-date, .ws-week {
+  font: 400 10.5px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+}
+
+/* ---- icon rail ------------------------------------------------------- */
+
+.ws-shell { display: flex; min-height: 100vh; }
+
+.ws-rail {
+  width: var(--ws-rail);
+  flex: none;
+  background: var(--ws-subtle);
+  border-right: 1px solid var(--ws-hair-strong);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 12px;
+}
+
+.ws-rail-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--ws-radius-btn);
+  border: none;
+  background: transparent;
+  color: var(--ws-ink-3);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ws-rail-btn--dark { background: var(--ws-active-bg); color: var(--ws-active-fg); }
+.ws-rail-btn--active { background: var(--ws-hair-strong); color: var(--ws-ink); }
+
+.ws-rail-spacer { flex: 1; }
+
+.ws-rail-swatch { width: 8px; height: 8px; border-radius: 2px; }
+
+.ws-rail-sync {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: oklch(0.72 0.16 150);
+  margin-top: 4px;
+}
+
+.ws-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }

@@ -1,0 +1,345 @@
+/*
+ * The grid.
+ *
+ * ONE CSS Grid holds the header rows AND every task row. Row wrappers use
+ * `display: contents`, so a row generates no box of its own and its cells become
+ * grid items directly. Two consequences, both load-bearing:
+ *
+ *   1. Every cell in a given day column participates in the SAME grid column, so
+ *      alignment is guaranteed by construction rather than by matching widths.
+ *   2. A row's height is the tallest thing in it, so a title wrapping to five
+ *      lines makes every cell in that row five lines tall — which is what lets
+ *      chips stay vertically centred against a tall row.
+ *
+ * The alternative (a flex row per task) requires every row to independently
+ * reproduce the same column widths, and drifts the moment one row wraps.
+ * `scripts/shots.mjs` measures real cell geometry in the browser to prove this.
+ */
+
+.ws-grid {
+  display: grid;
+  /* Set by the renderer from the window width: 24px grip, 3px project bar,
+     333px title (360 total), then per week 5x38px + 2x19px. */
+  grid-template-columns: var(--ws-grid-columns);
+  width: max-content;
+  min-width: 100%;
+  background: var(--ws-surface);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color: var(--ws-ink);
+}
+
+/* ---- header ---------------------------------------------------------- */
+
+.ws-head-item {
+  grid-column: span 3;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px 6px 32px;
+  font: 600 9px/1.4 'IBM Plex Mono', monospace;
+  letter-spacing: 0.08em;
+  color: var(--ws-ink-3);
+  background: var(--ws-subtle);
+}
+
+.ws-head-weeklabel {
+  grid-column: span 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 3px;
+  background: var(--ws-subtle);
+  border-bottom: 1px solid var(--ws-hair);
+  border-left: 1px solid var(--ws-hair-strong);
+}
+
+.ws-head-weeklabel--past { background: var(--ws-subtle); }
+
+.ws-week-id {
+  font: 600 10px/1 'IBM Plex Mono', monospace;
+  letter-spacing: 0.05em;
+  color: var(--ws-ink);
+}
+
+.ws-week-range {
+  font: 400 9.5px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-week-close {
+  margin-left: auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  background: var(--ws-active-bg);
+  color: var(--ws-active-fg);
+  display: grid;
+  place-items: center;
+  font: 500 9px/1 'IBM Plex Mono', monospace;
+}
+
+.ws-head-weekendspacer {
+  grid-column: span 2;
+  background: var(--ws-weekend-bg);
+  border-bottom: 1px solid var(--ws-hair);
+  border-left: 1px solid var(--ws-hair);
+}
+
+.ws-head-blank {
+  grid-column: span 3;
+  background: var(--ws-subtle);
+  border-bottom: 1px solid var(--ws-hair-strong);
+}
+
+.ws-day {
+  padding: 4px 0 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--ws-subtle);
+  border-bottom: 1px solid var(--ws-hair-strong);
+}
+
+.ws-day--weekend { background: var(--ws-weekend-bg); }
+.ws-day--past { background: var(--ws-past-tint); }
+
+.ws-day-letter {
+  font: 600 10px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}
+
+.ws-day-num {
+  font: 400 9px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+}
+
+.ws-day--weekend .ws-day-letter { font: 400 9px/1 'IBM Plex Sans', sans-serif; color: var(--ws-ink-3); }
+.ws-day--weekend .ws-day-num { font-size: 8px; color: var(--ws-ink-4); }
+
+/* Today is a 22px dark disc with the letter and date inside it. */
+.ws-day-disc {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ws-today-bg);
+  color: var(--ws-today-fg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font: 600 9px/1 'IBM Plex Mono', monospace;
+}
+
+.ws-day-disc span:last-child { font-weight: 400; font-size: 8px; opacity: 0.75; }
+
+.ws-day-disc--vacation {
+  background: transparent;
+  border: 1px dashed var(--ws-ink-3);
+  color: var(--ws-ink-3);
+}
+
+.ws-day-disc--vacation span:last-child { opacity: 1; }
+
+/* ---- rows ------------------------------------------------------------ */
+
+/*
+ * The row generates no box. Its children join the parent grid directly, which is
+ * what keeps columns aligned no matter how tall any individual row becomes.
+ */
+.ws-row { display: contents; }
+
+.ws-grip,
+.ws-bar,
+.ws-title,
+.ws-cell {
+  border-bottom: 1px solid var(--ws-hair);
+  min-height: 30px;
+}
+
+.ws-grip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 7px;
+  font: 400 13px/1 'IBM Plex Mono', monospace;
+  letter-spacing: -1px;
+  color: var(--ws-ink-4);
+  cursor: grab;
+  user-select: none;
+}
+
+.ws-bar { background: var(--ws-bar-color, transparent); }
+.ws-bar--project-view { opacity: 0.55; }
+
+.ws-title {
+  padding: 7px 10px 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ws-title--finished { padding-top: 4px; padding-bottom: 4px; }
+
+.ws-title-text {
+  font: 400 12.5px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+  text-wrap: pretty;
+  /* Never truncate. The handoff is explicit: titles wrap to as many lines as
+     they need, and the grid must cope rather than the text being cut. */
+  overflow-wrap: anywhere;
+}
+
+.ws-title-text--finished {
+  font-size: 11.5px;
+  text-decoration: line-through;
+  color: var(--ws-done-fg-row);
+}
+
+/* Skipped reads as disabled — italic and de-emphasised, never struck through.
+   Strikethrough is reserved for completion. */
+.ws-title-text--skipped {
+  font-style: italic;
+  color: var(--ws-ink-3);
+}
+
+.ws-title--child { padding-left: 26px; position: relative; }
+
+.ws-elbow {
+  position: absolute;
+  left: 8px;
+  top: 7px;
+  width: 16px;
+  height: 9px;
+  border-left: 1px solid var(--ws-ink-4);
+  border-bottom: 1px solid var(--ws-ink-4);
+}
+
+.ws-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font: 400 11px/1.45 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-note-bullet { color: var(--ws-ink-4); margin-right: 4px; }
+
+.ws-links { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+
+.ws-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px 1px 3px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: 11px;
+  background: var(--ws-chip-bg);
+  font: 400 10px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}
+
+.ws-link-dot { width: 11px; height: 11px; border-radius: 2px; background: var(--ws-link-dot); }
+
+/* ---- cells ----------------------------------------------------------- */
+
+.ws-cell {
+  border-left: 1px solid var(--ws-hair);
+  padding: 2.5px;
+  display: grid;
+  /* Centred, so a tall wrapping row still reads as a grid rather than one ruled
+     line above a lot of dead space. This was turn 4's decision (#4b). */
+  align-items: center;
+  justify-items: stretch;
+}
+
+.ws-cell--weekend { background: var(--ws-weekend-bg); }
+.ws-cell--past { background: var(--ws-past-tint); }
+.ws-cell--today { background: var(--ws-today-tint); }
+
+.ws-cell--vacation {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--ws-vac-bg) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.ws-chip {
+  height: 25px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+}
+
+.ws-chip--done {
+  background: var(--ws-done-bg);
+  color: var(--ws-done-fg);
+  font: 600 11px/1 'IBM Plex Sans', sans-serif;
+}
+
+.ws-chip--due {
+  background: var(--ws-due-bg);
+  color: var(--ws-due-fg);
+  font: 600 8.5px/1 'IBM Plex Mono', monospace;
+  letter-spacing: 0.04em;
+}
+
+/* A generated recurring occurrence is a rule firing, not something anyone typed.
+   Slightly softer so it reads as expected-but-unconfirmed. */
+.ws-chip--generated { opacity: 0.72; }
+
+.ws-chip--skip {
+  background: transparent;
+  border: 1px dashed var(--ws-ink-4);
+  color: var(--ws-ink-3);
+  font: 400 8.5px/1 'IBM Plex Mono', monospace;
+  font-style: italic;
+}
+
+.ws-cell--weekend .ws-chip { border-radius: 4px; }
+.ws-cell--weekend .ws-chip--due { font-size: 0; }
+
+/* ---- footer ---------------------------------------------------------- */
+
+.ws-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 14px;
+  background: var(--ws-subtle);
+  border-top: 1px solid var(--ws-hair-strong);
+  font: 400 10.5px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+}
+
+.ws-foot-spacer { margin-left: auto; }
+
+.ws-addrow {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 32px;
+  border-bottom: 1px solid var(--ws-hair);
+  font: 400 11.5px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-4);
+}
+
+.ws-addrow-plus {
+  width: 14px;
+  height: 14px;
+  border: 1px dashed var(--ws-ink-4);
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+}
+
+.ws-addrow-kbd {
+  font: 400 9.5px/1 'IBM Plex Mono', monospace;
+  padding: 1px 4px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: 3px;
+}
