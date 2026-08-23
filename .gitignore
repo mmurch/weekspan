@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+*.log
+
+# Personal ledgers must never be committed — this repo is the tool, not the data.
+*.ledger.json

@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/Ledger",
+  "definitions": {
+    "Ledger": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "description": "Advisory pointer for editors/agents."
+        },
+        "$agent": {
+          "type": "string",
+          "description": "Loud warning for any agent that meets this file with no folder context."
+        },
+        "version": {
+          "type": "number"
+        },
+        "closedThrough": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/IsoWeek"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Last week closed out, or null if none ever were. Close-out is strictly sequential, so one pointer replaces a set of closed weeks — and only one week ever shows the close affordance.\n\nAlso the window's left edge: the grid starts at the oldest unclosed week."
+        },
+        "vacationDays": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/IsoDate"
+          },
+          "description": "Days marked vacation. In the file because agents must not schedule into them."
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Project"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Item"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "closedThrough",
+        "vacationDays",
+        "projects",
+        "items"
+      ],
+      "additionalProperties": false,
+      "description": "The working ledger file."
+    },
+    "IsoWeek": {
+      "type": "string",
+      "description": "ISO week, `2026-W35`. Weeks start Monday."
+    },
+    "IsoDate": {
+      "type": "string",
+      "description": "Calendar date, `YYYY-MM-DD`. Never a timestamp — the grid has no time-of-day."
+    },
+    "Project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "colorToken": {
+          "type": "string",
+          "description": "Token name from the theme ramp (`barA`, `barB`, ...), not a literal color."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "colorToken"
+      ],
+      "additionalProperties": false
+    },
+    "Item": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Markdown. Bullet lists render under the title."
+        },
+        "parentId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "One level of nesting only."
+        },
+        "projectId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Project id, not name — renames must not rewrite every item."
+        },
+        "rank": {
+          "type": "string",
+          "description": "Base62 fractional index. The single ordering spine, never displayed. Scoped to siblings: global order = roots by rank, then each root's children by rank."
+        },
+        "marks": {
+          "type": "object",
+          "description": "Sparse cell map, date -> mark. At most one mark per (item, date), matching the mutually-exclusive cell menu. Replaces the handoff's single `due` / `done_on`.",
+          "patternProperties": {
+            "^\\d{4}-\\d{2}-\\d{2}$": {
+              "$ref": "#/definitions/Mark"
+            }
+          },
+          "additionalProperties": false
+        },
+        "recurrence": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Recurrence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Rule only. Occurrences are generated at read time and never written."
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Link"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "rank",
+        "marks"
+      ],
+      "additionalProperties": false
+    },
+    "Mark": {
+      "description": "A cell value. Modelled as a discriminated union so that `{ kind: 'due', provenance: 'deliberate' }` is a COMPILE error rather than a runtime throw, and so `provenance` is REQUIRED on a skip rather than optional.\n\nThat second property is the important one: a skip that loses its provenance is indistinguishable from one that never had it, which would make three months of absence look identical to three months of avoidance in the skip-streak data.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "due"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "done"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "skip"
+            },
+            "provenance": {
+              "$ref": "#/definitions/SkipProvenance"
+            }
+          },
+          "required": [
+            "kind",
+            "provenance"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SkipProvenance": {
+      "type": "string",
+      "enum": [
+        "deliberate",
+        "auto"
+      ],
+      "description": "How a skip came to exist.\n\n`deliberate` — the user chose to skip while present. `auto`       — auto-close resolved an unresolved recurring occurrence during                catch-up, because returning to a neglected ledger must never                cost more than a glance.\n\nSkip-streak surfacing must count only `deliberate` skips. Without this split, three months away would write a dozen auto-skips onto a weekly item and drown the very signal skip exists to expose."
+    },
+    "Recurrence": {
+      "type": "object",
+      "properties": {
+        "freq": {
+          "$ref": "#/definitions/RecurrenceFreq"
+        },
+        "weekday": {
+          "type": "number",
+          "description": "1 = Monday .. 7 = Sunday. Required for `weekly` and `biweekly`."
+        },
+        "monthday": {
+          "type": "number",
+          "description": "1..31. Required for `monthly`. Months that are too short are skipped, not clamped."
+        },
+        "anchor": {
+          "$ref": "#/definitions/IsoDate",
+          "description": "Series start. Also fixes the phase for `biweekly` (which fortnight is \"on\")."
+        },
+        "until": {
+          "$ref": "#/definitions/IsoDate",
+          "description": "Inclusive last date the series can generate, if bounded."
+        }
+      },
+      "required": [
+        "freq",
+        "anchor"
+      ],
+      "additionalProperties": false
+    },
+    "RecurrenceFreq": {
+      "type": "string",
+      "enum": [
+        "weekly",
+        "biweekly",
+        "monthly"
+      ]
+    },
+    "Link": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "description": "Resolved once on paste and cached here so chips render offline."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Favicon/kind hint. Icon BYTES live in a per-device cache, never in the file."
+        }
+      },
+      "required": [
+        "url",
+        "title"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

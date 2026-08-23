@@ -1,0 +1,24 @@
+{
+  "name": "@murch-todo/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Command-line ledger client. The sanctioned write path for agents.",
+  "bin": { "ledger": "./dist/index.js" },
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node18 --outfile=dist/index.js --banner:js='#!/usr/bin/env node'",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@murch-todo/ledger-core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.130",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "murch-todo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Personal TODO ledger — rolling multi-week grid over a plain-file ledger",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  }
+}

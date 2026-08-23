@@ -1,0 +1,51 @@
+/**
+ * Construction helpers for brand-new ledgers and archive files.
+ *
+ * `version` is load-bearing (see MIGRATIONS.md): it describes the shape of
+ * the data in the file, not "the newest version this client knows about."
+ * `serialize`/`serializeArchive` write it verbatim rather than substituting
+ * `SCHEMA_VERSION`, which means nothing else in this package may stamp a
+ * version onto existing data. These two factories are the one exception —
+ * they exist specifically to give callers ONE obvious correct way to build a
+ * genuinely NEW ledger/archive header, so nobody hand-builds one and has to
+ * guess at the right version number.
+ */
+
+import type { ArchiveFile, IsoDate, IsoWeek, Item, Ledger, Project } from './types.js'
+import { SCHEMA_VERSION } from './types.js'
+
+/**
+ * Build a brand-new, empty-by-default `Ledger`, stamped with the current
+ * `SCHEMA_VERSION`. Use this for genuinely new ledgers only — never to
+ * rebuild a ledger that was parsed from an existing file, since that would
+ * discard whatever version the file actually carried.
+ */
+export function createLedger(
+  init?: Partial<Pick<Ledger, 'projects' | 'items' | 'vacationDays' | 'closedThrough'>>,
+): Ledger {
+  const projects: Project[] = init?.projects ?? []
+  const items: Item[] = init?.items ?? []
+  const vacationDays: IsoDate[] = init?.vacationDays ?? []
+  const closedThrough: IsoWeek | null = init?.closedThrough ?? null
+  return {
+    version: SCHEMA_VERSION,
+    closedThrough,
+    vacationDays,
+    projects,
+    items,
+  }
+}
+
+/**
+ * Build a brand-new `ArchiveFile` for a just-closed week, stamped with the
+ * current `SCHEMA_VERSION`. As with `createLedger`, this is for a week being
+ * closed out now — an archive read back from disk already carries its own
+ * (possibly older) version and must not be rebuilt through this function.
+ */
+export function createArchive(week: IsoWeek, items: Item[]): ArchiveFile {
+  return {
+    version: SCHEMA_VERSION,
+    week,
+    items,
+  }
+}

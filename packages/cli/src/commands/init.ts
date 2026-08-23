@@ -1,0 +1,105 @@
+/**
+ * `ledger init` — create a new ledger.
+ */
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createLedger } from '@murch-todo/ledger-core'
+import type { Command, CommandContext } from '../command.js'
+import { EXIT, type ExitCode } from '../exit.js'
+import { createLedgerFile, ensureSchemaFile } from '../io.js'
+import { existsSync, writeFileSync } from 'node:fs'
+import { createOutput, type Output } from '../output.js'
+import { schemaPath } from '../config.js'
+
+/**
+ * The generated JSON Schema, read from ledger-core. The ledger's own `$schema`
+ * is the RELATIVE path `./ledger.schema.json`, so without a copy beside the
+ * file, editor validation silently resolves to nothing.
+ */
+function loadSchemaJson(): string | undefined {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const candidates = [
+    path.resolve(here, '../../../ledger-core/ledger.schema.json'),
+    path.resolve(here, '../../ledger-core/ledger.schema.json'),
+  ]
+  for (const c of candidates) {
+    try {
+      return readFileSync(c, 'utf8')
+    } catch {
+      continue
+    }
+  }
+  return undefined
+}
+
+function loadTemplate(name: string): string | undefined {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  for (const c of [
+    path.resolve(here, `../../templates/${name}`),
+    path.resolve(here, `../templates/${name}`),
+    path.resolve(here, `./templates/${name}`),
+  ]) {
+    try {
+      return readFileSync(c, 'utf8')
+    } catch {
+      continue
+    }
+  }
+  return undefined
+}
+
+export async function runInit(
+  ctx: CommandContext,
+  out: Output = createOutput({ json: ctx.json }),
+): Promise<ExitCode> {
+  const positional = ctx.argv.find((a) => !a.startsWith('-'))
+  const target = positional ? path.resolve(positional) : ctx.ledgerPath
+
+  await createLedgerFile(target, createLedger())
+
+  const schemaJson = loadSchemaJson()
+  let wroteSchema = false
+  if (schemaJson) {
+    wroteSchema = await ensureSchemaFile(target, schemaJson)
+  } else {
+    // Not fatal: the ledger is valid without it, only editor validation is lost.
+    out.warn('Could not locate ledger.schema.json; editor validation will be unavailable.')
+  }
+
+  // Agent-facing instructions in the ledger FOLDER, so any agent pointed at this
+  // directory picks them up without being told. Three mechanisms, none individually
+  // reliable: these files, the skill that bundles the CLI, and the `$agent` warning
+  // inside the ledger itself for an agent that arrives with no folder context.
+  const docs: string[] = []
+  for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+    const dest = path.join(path.dirname(target), name)
+    // Never clobber: the user may have their own instructions in this folder.
+    if (existsSync(dest)) continue
+    const body = loadTemplate(name)
+    if (!body) continue
+    writeFileSync(dest, body, 'utf8')
+    docs.push(dest)
+  }
+
+  out.data(
+    [
+      `Created ${target}`,
+      wroteSchema ? `Created ${schemaPath(target)}` : '',
+      ...docs.map((d) => `Created ${d}`),
+      '',
+      'Next:  ledger add "your first task" --due today',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    { created: target, schema: wroteSchema ? schemaPath(target) : null, docs },
+  )
+  return EXIT.OK
+}
+
+export const initCommand: Command = {
+  name: 'init',
+  summary: 'Create a new ledger file',
+  usage: 'ledger init [path]',
+  run: (ctx) => runInit(ctx),
+}
