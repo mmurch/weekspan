@@ -1,0 +1,220 @@
+/*
+ * First-run "choose a folder" screen — shown whenever no store is bound yet
+ * (fresh session, or a stored directory whose permission Chrome reset on
+ * restart). This is the very first thing anyone sees, so it gets the same
+ * token-driven styling as the rest of the app: a single calm card centred on
+ * `--ws-surface`, not a dense grid.
+ *
+ * Every colour below is a `--ws-*` custom property from tokens.css — never a
+ * literal — so this reads correctly in Paper, Solarized dark and Warm dark
+ * without any per-theme overrides here.
+ */
+
+.ws-filepicker-panel {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ws-surface);
+  padding: 24px;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.ws-filepicker-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-menu);
+  padding: 28px 28px 24px;
+  color: var(--ws-ink);
+}
+
+.ws-filepicker-title {
+  margin: 0 0 6px;
+  font: 600 17px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-filepicker-desc {
+  margin: 0 0 20px;
+  font: 400 13px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}
+
+/* ---- primary action ---------------------------------------------------- */
+
+.ws-filepicker-actions {
+  margin-bottom: 20px;
+}
+
+.ws-filepicker-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-btn);
+  background: var(--ws-active-bg);
+  color: var(--ws-active-fg);
+  font: 500 13px/1 'IBM Plex Sans', sans-serif;
+  cursor: pointer;
+}
+
+.ws-filepicker-primary:hover {
+  opacity: 0.9;
+}
+
+/* ---- recent folders ------------------------------------------------------
+ * A fixed min-height on this wrapper means the loading/empty/populated
+ * states share the same starting box, so the card does not visibly jump the
+ * instant `listHandles()` resolves — it only grows further if there is
+ * actually more than one folder to list, which is expected content growth.
+ */
+
+.ws-filepicker-recent {
+  min-height: 46px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ws-hair);
+}
+
+.ws-filepicker-label {
+  margin: 0 0 8px;
+  font: 500 10.5px/1 'IBM Plex Sans', sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ws-ink-3);
+}
+
+.ws-filepicker-hint {
+  margin: 0;
+  font: 400 12.5px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-filepicker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-filepicker-item {
+  border: 1px solid var(--ws-hair);
+  border-radius: var(--ws-radius-btn);
+  padding: 8px 10px;
+}
+
+.ws-filepicker-dirname {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ws-filepicker-dirname-text {
+  font-size: 12.5px;
+  color: var(--ws-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-filepicker-forget {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--ws-radius-2);
+  background: transparent;
+  color: var(--ws-ink-3);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ws-filepicker-forget:hover {
+  background: var(--ws-hair-strong);
+  color: var(--ws-ink);
+}
+
+/* Secondary actions — Reopen and + New file. Bordered / transparent, and
+ * deliberately identical for both: the permission re-grant ("Reopen") is the
+ * expected path on every fresh session (Chrome drops permission on restart
+ * but keeps the handle — see FilePicker.tsx), not an error, so it must not
+ * read as one. No red, no warning icon, same weight as any other secondary
+ * button here. */
+.ws-filepicker-secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-btn);
+  background: transparent;
+  color: var(--ws-ink-2);
+  font: 500 12px/1 'IBM Plex Sans', sans-serif;
+  cursor: pointer;
+}
+
+.ws-filepicker-secondary:hover:not(:disabled) {
+  background: var(--ws-subtle);
+}
+
+.ws-filepicker-secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ws-filepicker-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-filepicker-file {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-2);
+  background: transparent;
+  color: var(--ws-ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ws-filepicker-file:hover {
+  background: var(--ws-subtle);
+  color: var(--ws-ink);
+}
+
+/* ---- error text --------------------------------------------------------
+ * Real failures (e.g. permission denied when clicking Reopen) still need to
+ * be visible, but stay calm — subdued panel fill and body ink, not a red
+ * alert box, consistent with the rest of this screen. */
+.ws-filepicker-error {
+  margin: 16px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-btn);
+  background: var(--ws-subtle);
+  font: 400 12px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}
+
+/* ---- keyboard focus ---------------------------------------------------- */
+
+.ws-filepicker-panel button:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 2px;
+}

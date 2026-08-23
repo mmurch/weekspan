@@ -4,6 +4,7 @@ import type { IsoDate, Project } from '@weekspan/weekspan-core'
 import { weekday } from '@weekspan/weekspan-core'
 import type { Capture, Token } from './capture.js'
 import { parseCapture } from './capture.js'
+import { normalizeTitle } from './normalizeTitle.js'
 import './QuickCapture.css'
 
 /**
@@ -15,9 +16,12 @@ import './QuickCapture.css'
  * `Capture` when it actually performs the insert, since this component has no
  * way to write anything itself.
  *
- * `⏎` submits with `position: 'top'`, `⌥⏎` with `position: 'backlog'`, `esc`
- * closes without submitting. What "top" and "backlog" resolve to (which
- * afterId/beforeId anchors) is entirely the caller's concern.
+ * Text entry is a `<textarea>` (titles run long — the design's own example is
+ * 200 characters), so Enter needs to be explicit: plain `⏎` submits with
+ * `position: 'top'`, `⌥⏎` with `position: 'backlog'`, `⇧⏎` inserts a literal
+ * newline instead of submitting, and `esc` closes without submitting. What
+ * "top" and "backlog" resolve to (which afterId/beforeId anchors) is entirely
+ * the caller's concern.
  */
 
 const WEEKDAY_ABBR: Record<number, string> = {
@@ -64,10 +68,11 @@ function resolvedLine(capture: Capture, projects: readonly Project[]): string {
 
 /**
  * Render `value` with every `due`/`project` token wrapped in `<mark>`, and
- * everything else — including the exact original whitespace — passed
- * through untouched. This is the underlay that sits beneath the real
- * `<input>`; the two must render pixel-identical text so the highlighting
- * appears to live inside the input itself.
+ * everything else — including the exact original whitespace (newlines
+ * included) — passed through untouched. This is the underlay that sits
+ * beneath the real `<textarea>`; the two must render pixel-identical text,
+ * wrapping included, so the highlighting appears to live inside the textarea
+ * itself.
  */
 function renderHighlighted(value: string, tokens: readonly Token[]): ReactNode[] {
   const nodes: ReactNode[] = []
@@ -97,26 +102,45 @@ export interface QuickCaptureProps {
   onClose: () => void
 }
 
+/**
+ * Grow `el` to fit its content (up to the CSS `max-height` cap, past which
+ * the textarea's own `overflow-y: auto` takes over) and keep the highlight
+ * underlay's scroll position glued to it. Resetting height to `auto` first
+ * is required — otherwise `scrollHeight` would just report the previously
+ * set (possibly too-large) height back.
+ */
+function autoGrow(el: HTMLTextAreaElement, underlay: HTMLDivElement | null): void {
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+  if (underlay) underlay.scrollTop = el.scrollTop
+}
+
 export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptureProps): JSX.Element {
   const [value, setValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const underlayRef = useRef<HTMLDivElement>(null)
 
   const capture = useMemo(() => parseCapture(value, projects, today), [value, projects, today])
 
   useEffect(() => {
-    inputRef.current?.focus()
+    textareaRef.current?.focus()
+    if (textareaRef.current) autoGrow(textareaRef.current, underlayRef.current)
   }, [])
 
-  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>): void {
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (e.key === 'Escape') {
       e.preventDefault()
       onClose()
       return
     }
     if (e.key === 'Enter') {
+      // ⇧⏎ inserts a literal newline — let the textarea's default behavior
+      // handle it rather than submitting.
+      if (e.shiftKey) return
       e.preventDefault()
-      if (capture.title.trim() === '') return
-      onSubmit(capture, e.altKey ? 'backlog' : 'top')
+      const title = normalizeTitle(capture.title)
+      if (title === '') return
+      onSubmit({ ...capture, title }, e.altKey ? 'backlog' : 'top')
     }
   }
 
@@ -132,18 +156,25 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
     >
       <div className="ws-capture-panel" role="dialog" aria-modal="true" aria-label="Quick capture">
         <div className="ws-capture-input-wrap">
-          <div className="ws-capture-underlay" aria-hidden="true">
+          <div className="ws-capture-underlay" aria-hidden="true" ref={underlayRef}>
             {renderHighlighted(value, capture.tokens)}
           </div>
-          <input
-            ref={inputRef}
+          <textarea
+            ref={textareaRef}
             className="ws-capture-input"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              setValue(e.target.value)
+              autoGrow(e.target, underlayRef.current)
+            }}
+            onScroll={(e) => {
+              if (underlayRef.current) underlayRef.current.scrollTop = e.currentTarget.scrollTop
+            }}
             onKeyDown={handleKeyDown}
             placeholder="order tile samples thu weymouth"
             spellCheck={false}
             autoComplete="off"
+            rows={1}
             aria-label="Quick capture item"
           />
         </div>
@@ -151,6 +182,9 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
         <div className="ws-capture-hints">
           <span>
             <kbd>⏎</kbd> add at top
+          </span>
+          <span>
+            <kbd>⇧⏎</kbd> new line
           </span>
           <span>
             <kbd>⌥⏎</kbd> add to backlog

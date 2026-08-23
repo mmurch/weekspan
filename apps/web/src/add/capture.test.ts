@@ -106,4 +106,19 @@ describe('parseCapture', () => {
     expect(c.due).toBe('2026-09-01')
     expect(c.title).toBe('pay invoice')
   })
+
+  it('still finds due/project tokens across a newline (quick-capture is now multiline)', () => {
+    const input = 'order tile samples\nthu weymouth'
+    const c = parseCapture(input, projects, today)
+
+    expect(c.due).toBe('2026-08-27')
+    expect(c.projectId).toBe('proj-weymouth')
+    // The title is space-joined regardless of the newline in the source.
+    expect(c.title).toBe('order tile samples')
+
+    // Token spans still line up with the original (newline-containing) input.
+    for (const t of c.tokens) {
+      expect(input.slice(t.start, t.end)).toBe(t.value)
+    }
+  })
 })

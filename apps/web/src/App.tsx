@@ -17,6 +17,7 @@ import { reconcileSelection, selectionFromCell, type Selection } from './interac
 import { CellMenu } from './interaction/CellMenu.js'
 import { QuickCapture } from './add/QuickCapture.js'
 import { insertItem } from './add/draft.js'
+import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
 import { closeOutState, performClose } from './closeout/closeoutActions.js'
 import { CloseOutPanel } from './closeout/CloseOutPanel.js'
 
@@ -120,6 +121,13 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
         setCaptureOpen(true)
         return
       }
+      // Space opens capture when you are not typing. Must preventDefault, since
+      // space is also page-scroll.
+      if (shouldOpenCaptureOnSpace(e)) {
+        e.preventDefault()
+        setCaptureOpen(true)
+        return
+      }
       if (!weekspan) return
       const action = resolveKey(e)
       if (!action) return
@@ -178,7 +186,16 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
           <Grid
             vm={vm}
             selection={selection}
-            onSelectCell={(itemId, date) => setSelection(selectionFromCell(itemId, date))}
+            onSelectCell={(itemId, date) => {
+              // Click both selects AND advances the cell, per the request that a
+              // click cycle blank -> due -> done -> blank (plus skip when the item
+              // recurs). Routed through the same `cycle` action Enter uses, so the
+              // two can never diverge — including the vacation-day refusal.
+              const sel = selectionFromCell(itemId, date)
+              setSelection(sel)
+              const result = applyAction({ kind: 'cycle' }, sel, weekspan, today)
+              if (result.weekspan) void mutate(() => result.weekspan)
+            }}
             onContextCell={(itemId, date, x, y) =>
               setMenu({ x, y, sel: selectionFromCell(itemId, date) })
             }

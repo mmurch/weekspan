@@ -83,11 +83,15 @@ function WeekHeader({
         <span className="ws-week-id">{week.label}</span>
         <span className="ws-week-range">{week.range}</span>
         {/* Present only on a closeable past week — inert and absent otherwise. */}
-        {week.closeable ? (
+        {week.showClose ? (
           <button
-            className="ws-week-close"
+            className={`ws-week-close${week.closeable ? '' : ' ws-week-close--blocked'}`}
             type="button"
-            title={`Close out ${week.label}`}
+            title={
+              week.closeable
+                ? `Close out ${week.label}`
+                : `${week.label} cannot close yet — see what is blocking it`
+            }
             onClick={() => onCloseOut?.(week.week)}
           >
             ×

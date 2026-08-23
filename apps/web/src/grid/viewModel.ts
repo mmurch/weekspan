@@ -65,8 +65,19 @@ export interface WeekBlock {
   isPast: boolean
   isCurrent: boolean
   isOldestUnclosed: boolean
-  /** Only ever true on the oldest unclosed PAST week. */
+  /** True when this week may actually be closed right now. */
   closeable: boolean
+  /**
+   * Whether to render the close affordance at all.
+   *
+   * The handoff said the `×` appears only when a week is closeable and is
+   * "rendered absent" otherwise. In use that proved undiscoverable: a blocked
+   * week showed nothing, so there was no way to find out WHAT was blocking it —
+   * you had to already know. The affordance now appears on the oldest unclosed
+   * past week regardless, and clicking it either confirms the close or explains
+   * the blockers. Deliberate deviation from the handoff.
+   */
+  showClose: boolean
 }
 
 export interface CellVM {
@@ -176,6 +187,9 @@ function buildWeekBlock(
   // oldest unclosed week may ever close), so we scope it with the window's own flag
   // rather than let a resolved-but-not-oldest past week claim the close affordance.
   const closeable = w.isOldestUnclosed && isCloseable(weekspan, w.week, today).closeable
+  // Past-and-oldest is what earns the affordance; closeable only decides whether
+  // clicking it closes or explains.
+  const showClose = w.isOldestUnclosed && w.isPast
 
   return {
     week: w.week,
@@ -187,6 +201,7 @@ function buildWeekBlock(
     isCurrent: w.isCurrent,
     isOldestUnclosed: w.isOldestUnclosed,
     closeable,
+    showClose,
   }
 }
 

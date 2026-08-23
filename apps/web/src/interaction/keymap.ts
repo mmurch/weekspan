@@ -24,6 +24,7 @@ import {
   siblingsOf,
 } from '@weekspan/weekspan-core'
 import { buildGrid } from '../grid/viewModel.js'
+import { nextMarkState } from './cycle.js'
 import { moveSelection, type Selection } from './selection.js'
 
 export type Action =
@@ -31,6 +32,7 @@ export type Action =
   | { kind: 'setDone' }
   | { kind: 'clear' }
   | { kind: 'setSkip' }
+  | { kind: 'cycle' }
   | { kind: 'move'; dir: 'up' | 'down' | 'left' | 'right' }
   | { kind: 'reorder'; dir: 'up' | 'down' }
   | { kind: 'nudgeDue'; dir: 'left' | 'right' }
@@ -54,12 +56,19 @@ interface KeyBinding {
  * (3d) exposes one today. `applyAction` still supports it — vacation-day
  * auto-rescheduling and any future binding both need it — but nothing in this
  * table dispatches it yet.
+ *
+ * `Enter` drives the same mark-state LOOP a click on the cell does (see
+ * `cycle.ts`): blank -> due -> done -> blank, or with skip inserted before
+ * the wrap for a recurring item. It shares `applyAction`'s single code path
+ * with the click handler on purpose, so keyboard and mouse can never
+ * disagree about what "the next state" is.
  */
 export const KEYMAP: readonly KeyBinding[] = [
   { key: 'd', action: { kind: 'setDue' } },
   { key: 'v', action: { kind: 'setDone' } },
   { key: 'x', action: { kind: 'clear' } },
   { key: 'n', action: { kind: 'newItem' } },
+  { key: 'enter', action: { kind: 'cycle' } },
   { key: 'escape', action: { kind: 'escape' } },
   { key: 'arrowup', action: { kind: 'move', dir: 'up' } },
   { key: 'arrowdown', action: { kind: 'move', dir: 'down' } },
@@ -135,6 +144,9 @@ export function applyAction(
     case 'setSkip':
       return applyMark(action.kind, sel, weekspan)
 
+    case 'cycle':
+      return applyCycle(sel, weekspan, today)
+
     case 'reorder':
       return applyReorder(action.dir, sel, weekspan)
 
@@ -194,6 +206,21 @@ function applyMark(
   if (next === item) return { weekspan: null, selection: sel }
 
   return { weekspan: withItem(weekspan, next), selection: sel }
+}
+
+/**
+ * Enter (or a cell click) on the selected cell: advance its mark one step
+ * through the loop `cycle.ts` defines. Selection semantics mirror
+ * `applyMark` exactly — a missing item drops the selection, everything else
+ * (including a refused or no-op cycle) keeps it — so `cycle` slots into the
+ * reducer the same way every other mark action does; only the mark math
+ * itself lives elsewhere, in the one module click and keyboard both share.
+ */
+function applyCycle(sel: Selection | null, weekspan: Weekspan, today: IsoDate): ActionResult {
+  if (sel === null) return { weekspan: null, selection: null }
+  if (!findItem(weekspan, sel.itemId)) return { weekspan: null, selection: null }
+
+  return { weekspan: nextMarkState(weekspan, sel.itemId, sel.date, today), selection: sel }
 }
 
 /**

@@ -423,3 +423,11 @@ button.ws-week-close {
   font: 500 9px/1 'IBM Plex Mono', monospace;
   padding: 0;
 }
+
+/* A blocked week still shows the affordance, but muted — it opens an
+   explanation rather than performing a close. */
+button.ws-week-close--blocked {
+  background: transparent;
+  color: var(--ws-ink-4);
+  border: 1px dashed var(--ws-ink-4);
+}

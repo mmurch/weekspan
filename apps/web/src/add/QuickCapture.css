@@ -1,13 +1,26 @@
 /*
  * Quick capture (⌘K) overlay — design #3c-C.
  *
- * The input and its highlight underlay are two stacked elements sharing one
- * box: the underlay (a plain div with <mark> spans) renders BELOW a
- * transparent-text real <input> at identical font/size/padding, so the
- * highlighting appears to live inside the input while the input itself still
- * owns focus, selection, and the caret. `white-space: pre` on the underlay is
- * load-bearing — without it, trailing/collapsing whitespace would drift the
- * underlay out of alignment with the input on every space-ending keystroke.
+ * The textarea and its highlight underlay are two stacked elements sharing
+ * one box: the underlay (a plain div with <mark> spans) renders BELOW a
+ * transparent-text real <textarea> at identical font/size/padding/border, so
+ * the highlighting appears to live inside the textarea while the textarea
+ * itself still owns focus, selection, and the caret.
+ *
+ * Every property that affects text layout must match EXACTLY between
+ * `.ws-capture-underlay` and `.ws-capture-input` — font, padding, border,
+ * line-height, width, `white-space: pre-wrap`, `overflow-wrap` — a single
+ * mismatch visibly desyncs the highlight from the real text, especially once
+ * wrapping is involved. `white-space: pre-wrap` (rather than plain `pre`) is
+ * load-bearing for the same reason it always was: it preserves runs of
+ * whitespace instead of collapsing them, but now also lets long lines wrap
+ * exactly the way the textarea wraps them, instead of overflowing.
+ *
+ * The textarea auto-grows in JS (see `autoGrow` in QuickCapture.tsx) up to a
+ * `max-height` cap of ~8 lines, past which it scrolls internally; the
+ * underlay does not (it just fills the textarea's rendered box via `inset:
+ * 0`), so its `scrollTop` is kept in sync with the textarea's on every
+ * change/scroll to stay lined up while scrolled.
  */
 
 .ws-capture-overlay {
@@ -41,15 +54,19 @@
 .ws-capture-underlay,
 .ws-capture-input {
   box-sizing: border-box;
+  display: block;
   width: 100%;
+  margin: 0;
+  border: 0;
   font: 500 15px/1.4 'IBM Plex Sans', system-ui, sans-serif;
   padding: 8px 2px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .ws-capture-underlay {
   position: absolute;
   inset: 0;
-  white-space: pre;
   overflow: hidden;
   color: var(--ws-ink);
   pointer-events: none;
@@ -58,10 +75,13 @@
 .ws-capture-input {
   position: relative;
   background: transparent;
-  border: none;
   outline: none;
   color: transparent;
   caret-color: var(--ws-ink);
+  resize: none;
+  overflow-y: auto;
+  /* ~8 lines of content (line-height 1.4 * 8) plus the 8px top/bottom padding. */
+  max-height: calc(1.4em * 8 + 16px);
 }
 
 .ws-capture-input::placeholder {

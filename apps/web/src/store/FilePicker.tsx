@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createWeekspan, serialize } from '@weekspan/weekspan-core'
 import { ensurePermission, forgetHandle, listHandles, loadHandle, saveHandle } from './handles.js'
 import { listWeekspanFilesIn } from './FileSystemStore.js'
+import './FilePicker.css'
 
 /**
  * Presentational directory-binding UI. Owns the one browser-gated action —
@@ -211,74 +212,103 @@ export function FilePicker({ onFileReady }: FilePickerProps): JSX.Element {
   if (!supported) {
     return (
       <div className="ws-filepicker-panel">
-        <p>
-          This browser doesn&apos;t support the File System Access API. Open Weekspan in Chrome or Edge to
-          bind a folder.
-        </p>
+        <div className="ws-filepicker-card">
+          <h1 className="ws-filepicker-title">Open a weekspan</h1>
+          <p className="ws-filepicker-desc">
+            This browser doesn&apos;t support the File System Access API. Open Weekspan in Chrome or Edge to
+            bind a folder.
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="ws-filepicker-panel">
-      <div className="ws-filepicker-actions">
-        <button type="button" onClick={() => void handleOpen()}>
-          Open a folder…
-        </button>
-      </div>
+      <div className="ws-filepicker-card">
+        <h1 className="ws-filepicker-title">Open a weekspan</h1>
+        <p className="ws-filepicker-desc">
+          Choose a folder to store your weekspan files in, or reopen one you&apos;ve used before.
+        </p>
 
-      {loadingList ? (
-        <p className="ws-filepicker-hint">Loading recent folders…</p>
-      ) : dirs.length > 0 ? (
-        <ul className="ws-filepicker-list">
-          {dirs.map((d) => (
-            <li key={d.key} className="ws-filepicker-item">
-              <div className="ws-filepicker-dirname">
-                <span>{d.name}</span>
-                <button
-                  type="button"
-                  className="ws-filepicker-forget"
-                  title={`Forget ${d.name}`}
-                  onClick={() => void handleForget(d.key)}
-                >
-                  ×
-                </button>
-              </div>
+        <div className="ws-filepicker-actions">
+          <button type="button" className="ws-filepicker-primary" onClick={() => void handleOpen()}>
+            Open a folder…
+          </button>
+        </div>
 
-              {!d.granted ? (
-                <button type="button" disabled={busyKey === d.key} onClick={() => void handleReopen(d)}>
-                  {busyKey === d.key ? 'Requesting…' : `Reopen ${d.name}`}
-                </button>
-              ) : d.files === null ? (
-                <p className="ws-filepicker-hint">Could not list files in this folder.</p>
-              ) : (
-                <ul className="ws-filepicker-files">
-                  {d.files.map((f) => (
-                    <li key={f}>
-                      <button type="button" onClick={() => handleChooseFile(d, f)}>
-                        {f}
+        <div className="ws-filepicker-recent">
+          {loadingList ? (
+            <p className="ws-filepicker-hint">Loading recent folders…</p>
+          ) : dirs.length > 0 ? (
+            <>
+              <p className="ws-filepicker-label">Recent folders</p>
+              <ul className="ws-filepicker-list">
+                {dirs.map((d) => (
+                  <li key={d.key} className="ws-filepicker-item">
+                    <div className="ws-filepicker-dirname">
+                      <span className="ws-mono ws-filepicker-dirname-text">{d.name}</span>
+                      <button
+                        type="button"
+                        className="ws-filepicker-forget"
+                        title={`Forget ${d.name}`}
+                        onClick={() => void handleForget(d.key)}
+                      >
+                        ×
                       </button>
-                    </li>
-                  ))}
-                  <li>
-                    <button type="button" disabled={busyKey === d.key} onClick={() => void handleCreateFile(d)}>
-                      {busyKey === d.key
-                        ? 'Creating…'
-                        : d.files.length === 0
-                          ? 'Create a weekspan file…'
-                          : '+ New file…'}
-                    </button>
-                  </li>
-                </ul>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="ws-filepicker-hint">No folders opened yet.</p>
-      )}
+                    </div>
 
-      {error && <p className="ws-filepicker-error">{error}</p>}
+                    {!d.granted ? (
+                      <button
+                        type="button"
+                        className="ws-filepicker-secondary"
+                        disabled={busyKey === d.key}
+                        onClick={() => void handleReopen(d)}
+                      >
+                        {busyKey === d.key ? 'Requesting…' : `Reopen ${d.name}`}
+                      </button>
+                    ) : d.files === null ? (
+                      <p className="ws-filepicker-hint">Could not list files in this folder.</p>
+                    ) : (
+                      <ul className="ws-filepicker-files">
+                        {d.files.map((f) => (
+                          <li key={f}>
+                            <button
+                              type="button"
+                              className="ws-filepicker-file"
+                              onClick={() => handleChooseFile(d, f)}
+                            >
+                              <span className="ws-mono">{f}</span>
+                            </button>
+                          </li>
+                        ))}
+                        <li>
+                          <button
+                            type="button"
+                            className="ws-filepicker-secondary"
+                            disabled={busyKey === d.key}
+                            onClick={() => void handleCreateFile(d)}
+                          >
+                            {busyKey === d.key
+                              ? 'Creating…'
+                              : d.files.length === 0
+                                ? 'Create a weekspan file…'
+                                : '+ New file…'}
+                          </button>
+                        </li>
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="ws-filepicker-hint">No folders opened yet.</p>
+          )}
+        </div>
+
+        {error && <p className="ws-filepicker-error">{error}</p>}
+      </div>
     </div>
   )
 }
