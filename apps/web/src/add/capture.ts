@@ -2,20 +2,14 @@
  * ⌘K quick-capture parser: free text -> { title, due?, projectId?, tokens }.
  *
  * The day-word vocabulary (ISO dates, `today`/`tomorrow`/`yesterday`, weekday
- * names, `+3d`/`-1w` offsets) is deliberately identical to
- * `packages/cli/src/dates.ts`'s `parseDateArg`, so an agent using the CLI and a
- * person typing into quick-capture never learn two different date languages.
- * It is REIMPLEMENTED here rather than imported, per this package's boundary
- * (the web app depends on `@weekspan/weekspan-core`, not on the CLI package),
- * but every branch below mirrors `tryParseDateArg` one-for-one — keep them in
- * sync if that vocabulary ever changes. The one deliberate difference: capture
- * words are already whitespace-free by construction (they come from splitting
- * the input on whitespace), so the "reject internal whitespace" guard in the
- * original has no equivalent here.
+ * names, `+3d`/`-1w` offsets) is `tryParseDateWord` from
+ * `@weekspan/weekspan-core`, the same shared parser the CLI's `parseDateArg`
+ * wraps — so an agent using the CLI and a person typing into quick-capture
+ * never learn two different date languages.
  */
 
 import type { IsoDate, Project } from '@weekspan/weekspan-core'
-import { addDays, isValidIsoDate, weekday } from '@weekspan/weekspan-core'
+import { tryParseDateWord } from '@weekspan/weekspan-core'
 
 export interface Token {
   start: number
@@ -29,53 +23,6 @@ export interface Capture {
   due?: IsoDate
   projectId?: string
   tokens: Token[]
-}
-
-const WEEKDAY_NAMES: Record<string, number> = {
-  mon: 1,
-  monday: 1,
-  tue: 2,
-  tuesday: 2,
-  wed: 3,
-  wednesday: 3,
-  thu: 4,
-  thursday: 4,
-  fri: 5,
-  friday: 5,
-  sat: 6,
-  saturday: 6,
-  sun: 7,
-  sunday: 7,
-}
-
-const OFFSET_RE = /^([+-])(\d+)([dw])$/
-
-/** Next date on-or-after `today` (inclusive) whose weekday matches `targetWeekday` (1=Mon..7=Sun). */
-function nextWeekdayInclusive(today: IsoDate, targetWeekday: number): IsoDate {
-  const delta = (targetWeekday - weekday(today) + 7) % 7
-  return addDays(today, delta)
-}
-
-/** Mirrors `tryParseDateArg` from `packages/cli/src/dates.ts` — see file header. */
-function tryParseDayWord(word: string, today: IsoDate): IsoDate | undefined {
-  if (isValidIsoDate(word)) return word
-
-  const lower = word.toLowerCase()
-  if (lower === 'today') return today
-  if (lower === 'tomorrow') return addDays(today, 1)
-  if (lower === 'yesterday') return addDays(today, -1)
-  if (lower in WEEKDAY_NAMES) return nextWeekdayInclusive(today, WEEKDAY_NAMES[lower]!)
-
-  const m = OFFSET_RE.exec(word)
-  if (m) {
-    const sign = m[1] === '-' ? -1 : 1
-    const n = Number(m[2])
-    const unit = m[3]
-    const days = unit === 'w' ? n * 7 : n
-    return addDays(today, sign * days)
-  }
-
-  return undefined
 }
 
 /**
@@ -125,7 +72,7 @@ export function parseCapture(input: string, projects: readonly Project[], today:
     const start = m.index ?? 0
     const end = start + value.length
 
-    const asDue = tryParseDayWord(value, today)
+    const asDue = tryParseDateWord(value, today)
     if (asDue !== undefined) {
       due = asDue
       tokens.push({ start, end, kind: 'due', value })

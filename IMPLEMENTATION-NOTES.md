@@ -518,3 +518,29 @@ layer was a disagreement BETWEEN correct-looking modules — close-out's blocker
 closeable flag, global flags vs. command parsers, `--json` as output format vs. as permission,
 and now list's week vs. close-out's week. Module-level tests cannot see any of them. The
 end-to-end suite and cross-module reasoning are what earn their keep here.
+
+
+## Date-word vocabulary lives in weekspan-core (task #38)
+
+`tryParseDateWord` / `parseDateWord` in `packages/weekspan-core/src/datewords.ts` are the single
+implementation of the `thu` / `today` / `+3d` vocabulary. The CLI and the web quick-capture both
+call it; neither has a copy.
+
+It was duplicated for a while — once in `packages/cli/src/dates.ts`, once privately inside
+`apps/web/src/add/capture.ts` — with nothing enforcing parity. The failure mode is silent and
+nasty: an agent adding `thu` through the CLI and a person typing `thu` in quick capture could
+land on different days, with nothing anywhere to flag the divergence.
+
+**Core throws a plain `Error`, never `CliError`.** weekspan-core has no dependency on the CLI and
+must not gain one, so `packages/cli/src/dates.ts` is now a thin adapter that catches and re-wraps
+as `CliError(msg, EXIT.USAGE)`, preserving the CLI's exit-code contract.
+
+The CLI's 33-test spec moved into core essentially intact rather than being rewritten — it was the
+more thorough of the two. Two parity guards were added on top: a 21-case table in core, and
+`apps/web/src/add/parity.test.ts`, whose expected dates were produced by running the BUILT CLI
+binary rather than by reading the implementation. The web-side test is structurally redundant while
+both call the same function; it exists to fail loudly if someone reintroduces a local copy.
+
+*Flagged:* the CLI's user-facing error message now comes from core's error text verbatim, so
+changing the wording in core changes the CLI's output. That coupling is the point, but it means
+message-stability assertions exist on both sides of the boundary.

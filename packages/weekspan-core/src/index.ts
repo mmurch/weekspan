@@ -49,6 +49,8 @@ export {
   weeksBetween,
 } from './dates.js'
 
+export { parseDateWord, tryParseDateWord } from './datewords.js'
+
 export {
   RankError,
   byRank,
