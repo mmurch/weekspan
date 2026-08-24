@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { minimalMoveRank, weekOf, type Weekspan } from '@weekspan/weekspan-core'
 import { Grid } from './grid/Grid.js'
 import { buildGrid } from './grid/viewModel.js'
 import { demoWeekspan, emptyWeekspan, stressWeekspan, wrappingWeekspan } from './grid/fixtures.js'
-import { applyTheme, loadTheme, type ThemeChoice } from './theme.js'
+import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from './theme.js'
+import { ThemePicker } from './theme/ThemePicker.js'
+import { FilterField } from './filter/FilterField.js'
+import { filterRows, parseFilter } from './filter/filter.js'
+import { toggleVacation } from './interaction/vacation.js'
+import { commitNotes } from './add/notes.js'
+import { commitBulk } from './add/bulkCapture.js'
+import { Notice, type NoticeMessage } from './Notice.js'
 import { Rail } from './Rail.js'
 import { ShortcutBar } from './ShortcutBar.js'
 import { ZoomPicker, loadZoom, useFillWeeks } from './zoom.js'
@@ -55,9 +62,16 @@ export function App(): JSX.Element {
   const themeParam = params.get('theme')
   const fixtureParam = params.get('fixture')
 
+  const [theme, setTheme] = useState<ThemeChoice>(() =>
+    isTheme(themeParam) ? themeParam : loadTheme(),
+  )
   useEffect(() => {
-    applyTheme(isTheme(themeParam) ? themeParam : loadTheme())
-  }, [themeParam])
+    applyTheme(theme)
+  }, [theme])
+  const onThemeChange = useCallback((next: ThemeChoice) => {
+    saveTheme(next)
+    setTheme(next)
+  }, [])
 
   /**
    * A `?fixture=` param binds an in-memory store instead of a real file. This is
@@ -76,10 +90,22 @@ export function App(): JSX.Element {
   )
 
   if (!store) return <FilePicker onFileReady={onFileReady} />
-  return <Workspace store={store} today={today} />
+  return (
+    <Workspace store={store} today={today} theme={theme} onThemeChange={onThemeChange} />
+  )
 }
 
-function Workspace({ store, today }: { store: FileStore; today: string }): JSX.Element {
+function Workspace({
+  store,
+  today,
+  theme,
+  onThemeChange,
+}: {
+  store: FileStore
+  today: string
+  theme: ThemeChoice
+  onThemeChange: (t: ThemeChoice) => void
+}): JSX.Element {
   const { status, weekspan, mutate, mutateWithArchives, lastMerged, lastConflicts } =
     useWeekspan(store)
 
@@ -96,6 +122,15 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
   const [colorPicker, setColorPicker] = useState<{ projectId: string; x: number; y: number } | null>(
     null,
   )
+  const [filterText, setFilterText] = useState('')
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<NoticeMessage | null>(null)
+  const noticeId = useRef(0)
+
+  const say = useCallback((text: string, tone: NoticeMessage['tone'] = 'info') => {
+    noticeId.current += 1
+    setNotice({ id: noticeId.current, text, tone })
+  }, [])
 
   /**
    * Zoom is applied to the document root, never to an inner element.
@@ -121,6 +156,23 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
     () => (weekspan ? buildGrid(weekspan, today, fillWeeks) : null),
     [weekspan, today, fillWeeks],
   )
+
+  const projectNameById = useMemo(
+    () => new Map((weekspan?.projects ?? []).map((p) => [p.id, p.name])),
+    [weekspan],
+  )
+
+  /**
+   * Filtering keeps a matching row's parent (or children) visible as context —
+   * a sub-item floating with no parent above it is unreadable.
+   */
+  const filtered = useMemo(() => {
+    if (!vm) return null
+    const q = parseFilter(filterText)
+    return filterRows(vm.rows, q, projectNameById)
+  }, [vm, filterText, projectNameById])
+
+  const filtering = filterText.trim() !== ''
 
   const projectVm = useMemo(
     () =>
@@ -243,6 +295,12 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
           onZoom={setZoom}
           view={view}
           onView={setView}
+          theme={theme}
+          onThemeChange={onThemeChange}
+          filterText={filterText}
+          onFilterChange={setFilterText}
+          matchCount={filtered?.length ?? 0}
+          totalCount={vm.rows.length}
         />
         {lastMerged ? (
           <Banner>
@@ -271,7 +329,9 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
             }}
             onCloseOut={() => setCloseOutOpen(true)}
             gripHandlers={gripHandlers}
-            previewRows={dragState.draggingId ? dragState.rows : null}
+            previewRows={
+              dragState.draggingId ? dragState.rows : filtering ? (filtered ?? null) : null
+            }
             draggingId={dragState.draggingId}
             editingId={editing?.kind === 'existing' ? editing.itemId : null}
             draftAfterId={editing?.kind === 'new' ? editing.afterId : null}
@@ -285,6 +345,29 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
               })
             }
             onPickColor={(projectId, x, y) => setColorPicker({ projectId, x, y })}
+            onToggleVacation={(date) => {
+              void mutate((w) => {
+                const result = toggleVacation(w, date, today)
+                if (!result) return null
+                // Rescheduling someone's work silently is the failure mode the
+                // design warns about, so always say what moved.
+                if (result.movedItemIds.length > 0) {
+                  say(
+                    `${result.movedItemIds.length} due date(s) moved off ${date} to the next working day.`,
+                    'warn',
+                  )
+                }
+                return result.weekspan
+              })
+            }}
+            editingNotesId={editingNotesId}
+            onStartEditNotes={(itemId) => setEditingNotesId(itemId)}
+            onCommitNotes={(notes) => {
+              const id = editingNotesId
+              setEditingNotesId(null)
+              if (!id) return
+              void mutate((w) => commitNotes(w, id, notes))
+            }}
             onStartEdit={(itemId) => setEditing({ kind: 'existing', itemId })}
             onInsertBetween={(afterId, beforeId, parentId) =>
               setEditing({ kind: 'new', afterId, beforeId, parentId })
@@ -319,6 +402,11 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
           projects={weekspan.projects}
           today={today}
           onClose={() => setCaptureOpen(false)}
+          onSubmitBulk={(parse, position) => {
+            void mutate((w) => commitBulk(w, parse, position))
+            setCaptureOpen(false)
+            say(`Imported ${parse.createCount} item(s).`)
+          }}
           onSubmit={(capture, position, mode) => {
             if (mode === 'project') {
               void mutate((w) => commitProjectCapture(w, capture.title))
@@ -354,6 +442,8 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
           }}
         />
       ) : null}
+
+      <Notice message={notice} onDismiss={() => setNotice(null)} />
 
       {colorPicker ? (
         <ProjectColorPicker
@@ -406,6 +496,12 @@ function TopBar({
   onZoom,
   view,
   onView,
+  theme,
+  onThemeChange,
+  filterText,
+  onFilterChange,
+  matchCount,
+  totalCount,
 }: {
   today: string
   name: string
@@ -413,6 +509,12 @@ function TopBar({
   onZoom: (z: number) => void
   view: 'priority' | 'project'
   onView: (v: 'priority' | 'project') => void
+  theme: ThemeChoice
+  onThemeChange: (t: ThemeChoice) => void
+  filterText: string
+  onFilterChange: (v: string) => void
+  matchCount: number
+  totalCount: number
 }): JSX.Element {
   const label = new Date(`${today}T00:00:00Z`)
     .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
@@ -436,9 +538,15 @@ function TopBar({
       >
         Project
       </button>
-      <span className="ws-filter">/ filter</span>
+      <FilterField
+        value={filterText}
+        onChange={onFilterChange}
+        matchCount={matchCount}
+        totalCount={totalCount}
+      />
       <span className="ws-topbar-spacer" />
       <ZoomPicker zoom={zoom} onZoom={onZoom} />
+      <ThemePicker value={theme} onChange={onThemeChange} />
       <span className="ws-date">{label}</span>
       <span className="ws-week">{weekOf(today)}</span>
     </div>

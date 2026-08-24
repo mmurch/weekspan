@@ -25,6 +25,7 @@ import {
 } from '@weekspan/weekspan-core'
 import { buildGrid } from '../grid/viewModel.js'
 import { nextMarkState } from './cycle.js'
+import { indentItem, outdentItem } from './nesting.js'
 import { moveSelection, type Selection } from './selection.js'
 
 export type Action =
@@ -38,12 +39,16 @@ export type Action =
   | { kind: 'nudgeDue'; dir: 'left' | 'right' }
   | { kind: 'newItem' }
   | { kind: 'escape' }
+  | { kind: 'indent' }
+  | { kind: 'outdent' }
 
 interface KeyBinding {
   /** `KeyboardEvent.key`, lower-cased. */
   key: string
   /** Whether Option/Alt must be held. Absent (falsy) means "must NOT be held". */
   alt?: boolean
+  /** Whether Shift must be held. Absent (falsy) means "must NOT be held". */
+  shift?: boolean
   action: Action
 }
 
@@ -78,6 +83,10 @@ export const KEYMAP: readonly KeyBinding[] = [
   { key: 'arrowdown', alt: true, action: { kind: 'reorder', dir: 'down' } },
   { key: 'arrowleft', alt: true, action: { kind: 'nudgeDue', dir: 'left' } },
   { key: 'arrowright', alt: true, action: { kind: 'nudgeDue', dir: 'right' } },
+  // Tab / Shift+Tab indent and outdent the selected item — the design handoff's
+  // "⇥⇥ indents a draft as a sub-item", extended to an existing selected row.
+  { key: 'tab', action: { kind: 'indent' } },
+  { key: 'tab', shift: true, action: { kind: 'outdent' } },
 ]
 
 /**
@@ -107,7 +116,10 @@ export function resolveKey(e: KeyboardEvent): Action | null {
 
   const key = e.key.toLowerCase()
   const alt = e.altKey
-  const binding = KEYMAP.find((b) => b.key === key && Boolean(b.alt) === alt)
+  const shift = e.shiftKey
+  const binding = KEYMAP.find(
+    (b) => b.key === key && Boolean(b.alt) === alt && Boolean(b.shift) === shift,
+  )
   return binding ? binding.action : null
 }
 
@@ -152,6 +164,10 @@ export function applyAction(
 
     case 'nudgeDue':
       return applyNudgeDue(action.dir, sel, weekspan)
+
+    case 'indent':
+    case 'outdent':
+      return applyNesting(action.kind, sel, weekspan)
 
     case 'newItem':
       // Item creation belongs to the hover-seam / Enter-split / quick-capture
@@ -273,4 +289,17 @@ function applyNudgeDue(dir: 'left' | 'right', sel: Selection | null, weekspan: W
 
   const moved = setDue(clearMark(item, sel.date), nextDate)
   return { weekspan: withItem(weekspan, moved), selection: { itemId: item.id, date: nextDate } }
+}
+
+/**
+ * Tab / Shift+Tab on the selected row: nest it under the preceding root, or
+ * promote it back to a root. All the "may this happen" logic (one level of
+ * nesting, no preceding root, would-orphan-grandchildren) lives in
+ * `nesting.ts`; this just wires its null-means-refused contract into the
+ * reducer the same way every other action here does.
+ */
+function applyNesting(kind: 'indent' | 'outdent', sel: Selection | null, weekspan: Weekspan): ActionResult {
+  if (sel === null) return { weekspan: null, selection: null }
+  const next = kind === 'indent' ? indentItem(weekspan, sel.itemId) : outdentItem(weekspan, sel.itemId)
+  return { weekspan: next, selection: sel }
 }

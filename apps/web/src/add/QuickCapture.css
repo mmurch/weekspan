@@ -142,3 +142,135 @@
   font: inherit;
   color: var(--ws-ink-3);
 }
+
+/*
+ * Bulk import preview (design: pasting a spreadsheet range into quick
+ * capture). `.ws-capture-bulk-list` is the piece that matters most: it
+ * caps its own height and scrolls internally, so a 100+ row paste previews
+ * inline instead of pushing the confirm buttons — and the whole panel —
+ * past the viewport.
+ */
+
+.ws-capture-bulk {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ws-hair);
+}
+
+.ws-capture-bulk-header {
+  font: 600 11px/1.4 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-2);
+  margin-bottom: 6px;
+}
+
+.ws-capture-bulk-skipped-count {
+  font-weight: 500;
+  color: var(--ws-ink-4);
+}
+
+.ws-capture-bulk-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--ws-hair);
+  border-radius: var(--ws-radius-3);
+  background: var(--ws-subtle);
+}
+
+.ws-capture-bulk-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 8px;
+  font: 500 11.5px/1.4 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-2);
+  border-bottom: 1px solid var(--ws-hair);
+}
+
+.ws-capture-bulk-line:last-child {
+  border-bottom: none;
+}
+
+.ws-capture-bulk-line--skipped {
+  color: var(--ws-ink-4);
+  text-decoration: line-through;
+}
+
+.ws-capture-bulk-line--warn {
+  background: var(--ws-hl-bg);
+}
+
+.ws-capture-bulk-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-capture-bulk-meta {
+  flex: 0 0 auto;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.ws-capture-bulk-meta--due {
+  background: var(--ws-due-bg);
+  color: var(--ws-due-fg);
+}
+
+.ws-capture-bulk-meta--project {
+  background: var(--ws-sel-bg);
+  color: var(--ws-sel-ring);
+}
+
+.ws-capture-bulk-reason {
+  flex: 0 0 100%;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--ws-ink-4);
+}
+
+.ws-capture-bulk-line--warn .ws-capture-bulk-reason {
+  color: var(--ws-due-fg);
+}
+
+.ws-capture-bulk-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ws-capture-bulk-btn {
+  padding: 6px 12px;
+  border-radius: var(--ws-radius-btn);
+  border: 1px solid transparent;
+  font: 500 11.5px/1 'IBM Plex Sans', sans-serif;
+  cursor: pointer;
+}
+
+.ws-capture-bulk-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ws-capture-bulk-btn--ghost {
+  background: transparent;
+  border-color: var(--ws-hair-strong);
+  color: var(--ws-ink-2);
+}
+
+.ws-capture-bulk-btn--ghost:hover:not(:disabled) {
+  background: var(--ws-hair);
+}
+
+.ws-capture-bulk-btn--primary {
+  background: var(--ws-active-bg);
+  color: var(--ws-active-fg);
+}
+
+.ws-capture-bulk-btn--primary:hover:not(:disabled) {
+  opacity: 0.9;
+}

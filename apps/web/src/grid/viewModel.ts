@@ -100,6 +100,13 @@ export interface RowVM {
   style: RowStyle
   /** 'barA' | 'barB' | ... resolved from the item's project. Null if none or missing. */
   projectColorToken: string | null
+  /**
+   * The item's project id, carried through so consumers can identify a project
+   * exactly. Filtering previously had to match on `projectColorToken`, which
+   * conflates two projects that happen to share a colour — nothing enforces
+   * colour uniqueness.
+   */
+  projectId: string | null
   recurring: boolean
   links: Link[]
   /** One per date across the whole window, in the same order as `GridVM.dates`. */
@@ -244,6 +251,7 @@ function buildRow(
     state,
     style: rowStyle(state),
     projectColorToken,
+    projectId: item.projectId ?? null,
     recurring: item.recurrence != null,
     links: item.links ?? [],
     cells: dates.map((date) => buildCell(item, date, today, weekspan, pastByWeek)),

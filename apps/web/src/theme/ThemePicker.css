@@ -1,0 +1,117 @@
+/*
+ * Theme picker (design handoff #5d): a compact pill at the right end of the
+ * top bar — 9px round swatch, name, `▾` — that opens a menu of the four
+ * choices. Same shell conventions as the other popovers in this codebase
+ * (ProjectColorPicker.css, CellMenu.css): panel fill, hairline border, soft
+ * shadow, radius-menu corners. Every colour here is a `--ws-*` custom
+ * property, so the picker's own chrome repaints correctly across Paper,
+ * Solarized dark and Warm dark; the per-theme swatch colours themselves
+ * come from `theme.ts`'s `THEMES` (see ThemePicker.tsx for why those can't
+ * be live tokens).
+ */
+
+.ws-themepicker {
+  position: relative;
+  display: inline-flex;
+}
+
+.ws-themepicker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-4);
+  background: var(--ws-subtle);
+  color: var(--ws-ink-2);
+  font: 500 10.5px/1 'IBM Plex Sans', sans-serif;
+  cursor: pointer;
+}
+
+.ws-themepicker-trigger:hover {
+  color: var(--ws-ink);
+}
+
+.ws-themepicker-trigger:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 2px;
+}
+
+.ws-themepicker-trigger-swatch {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 1px solid var(--ws-hair-strong);
+}
+
+.ws-themepicker-trigger-label {
+  white-space: nowrap;
+}
+
+.ws-themepicker-trigger-caret {
+  font-size: 8px;
+  color: var(--ws-ink-3);
+}
+
+.ws-themepicker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 168px;
+  padding: 4px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-menu);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.ws-themepicker-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--ws-radius-3);
+  background: transparent;
+  color: var(--ws-ink);
+  font: 400 12px/1 'IBM Plex Sans', sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-themepicker-item:hover,
+.ws-themepicker-item:focus-visible {
+  background: var(--ws-subtle);
+  outline: none;
+}
+
+.ws-themepicker-item-swatch {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 1px solid var(--ws-hair-strong);
+}
+
+.ws-themepicker-item-label {
+  flex: 1;
+}
+
+.ws-themepicker-item-check {
+  flex: none;
+  color: var(--ws-ink-3);
+  font-size: 11px;
+  line-height: 1;
+}

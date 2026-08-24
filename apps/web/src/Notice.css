@@ -1,0 +1,34 @@
+.ws-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 520px;
+  padding: 8px 10px 8px 14px;
+  border-radius: var(--ws-radius-menu);
+  border: 1px solid var(--ws-hair-strong);
+  background: var(--ws-panel);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 12%);
+  font: 400 11.5px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+/* Warnings carry the highlight tint rather than a red — nothing here is an
+   error, it is a change the user should know happened. */
+.ws-notice--warn { background: var(--ws-hl-bg); }
+
+.ws-notice-text { flex: 1; }
+
+.ws-notice-close {
+  border: none;
+  background: transparent;
+  color: var(--ws-ink-3);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+}

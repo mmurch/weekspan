@@ -4,6 +4,8 @@ import type { IsoDate, Project } from '@weekspan/weekspan-core'
 import { weekday } from '@weekspan/weekspan-core'
 import type { Capture, Token } from './capture.js'
 import { parseCapture } from './capture.js'
+import type { BulkParse } from './bulkCapture.js'
+import { parseBulk } from './bulkCapture.js'
 import { normalizeTitle } from './normalizeTitle.js'
 import './QuickCapture.css'
 
@@ -31,6 +33,20 @@ import './QuickCapture.css'
  * PARSING IS SUPPRESSED (a project named "thu", or one whose name happens to
  * collide with an existing project, must not get silently mangled by
  * `parseCapture`) — the whole typed string becomes the project name.
+ *
+ * Bulk import mode: when the pasted/typed content has a newline AND more
+ * than one non-blank line (the shape a copied spreadsheet range takes —
+ * that's the whole reason this exists, migrating an existing todo list),
+ * quick-capture switches from previewing ONE item to previewing a BATCH,
+ * via `parseBulk` (per-line `parseCapture`, so each line still gets its own
+ * due/project resolution). Plain `⏎` deliberately does NOT submit in this
+ * mode — it behaves like `⇧⏎` and inserts a newline instead — because there
+ * is no undo in this app, and an accidental paste-and-enter must never be
+ * able to write up to ~100 items in one keystroke. Creating requires an
+ * explicit button, or `⌘⏎`/`⌘⌥⏎`. Import mode and `projectMode` are
+ * mutually exclusive in practice (bulk-creating several projects at once
+ * isn't a thing this does), so the project toggle is hidden while import
+ * mode is active rather than trying to make the two combine.
  */
 
 const WEEKDAY_ABBR: Record<number, string> = {
@@ -115,6 +131,13 @@ export interface QuickCaptureProps {
    * `capture.projectId` are never set.
    */
   onSubmit: (capture: Capture, position: 'top' | 'backlog', mode: 'item' | 'project') => void
+  /**
+   * Fired only from bulk-import mode's explicit confirm (button or
+   * `⌘⏎`/`⌘⌥⏎`) — never from plain `⏎`. Optional so a caller that hasn't
+   * wired up a bulk-commit path yet still typechecks; without it, the
+   * confirm controls render but do nothing when activated.
+   */
+  onSubmitBulk?: (parse: BulkParse, position: 'top' | 'backlog') => void
   onClose: () => void
 }
 
@@ -131,7 +154,13 @@ function autoGrow(el: HTMLTextAreaElement, underlay: HTMLDivElement | null): voi
   if (underlay) underlay.scrollTop = el.scrollTop
 }
 
-export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptureProps): JSX.Element {
+export function QuickCapture({
+  projects,
+  today,
+  onSubmit,
+  onSubmitBulk,
+  onClose,
+}: QuickCaptureProps): JSX.Element {
   const [value, setValue] = useState('')
   // Single source of truth for project-creation mode. Both the "Project"
   // checkbox and the `⌘⏎`/`Ctrl+⏎` shortcut read/write this ONE flag — never
@@ -142,8 +171,24 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
 
   // Parsed unconditionally (cheap, and needed for item-mode submits), but its
   // due/project tokens are deliberately ignored below whenever `projectMode`
-  // is on — see the module doc.
+  // or `importMode` is on — see the module doc.
   const capture = useMemo(() => parseCapture(value, projects, today), [value, projects, today])
+
+  // Bulk import mode: a newline AND more than one non-blank line. A pasted
+  // single title that merely happens to contain a blank line (or a trailing
+  // newline left over from copying one cell) must still behave as ONE item,
+  // exactly as it always has — so this is deliberately "more than one
+  // non-blank line", not just "contains a newline".
+  const importMode = useMemo(() => {
+    if (!value.includes('\n')) return false
+    const nonBlank = value.split(/\r\n|\r|\n/).filter((line) => line.trim() !== '').length
+    return nonBlank > 1
+  }, [value])
+
+  const bulkParse = useMemo<BulkParse | null>(
+    () => (importMode ? parseBulk(value, projects, today) : null),
+    [importMode, value, projects, today],
+  )
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -160,6 +205,19 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
       // ⇧⏎ inserts a literal newline — let the textarea's default behavior
       // handle it rather than submitting.
       if (e.shiftKey) return
+
+      if (importMode) {
+        // Plain ⏎ must NOT submit here — there is no undo, and an accidental
+        // paste-and-enter must never write up to ~100 items. Only the
+        // explicit ⌘⏎ (top) / ⌘⌥⏎ (backlog) shortcuts confirm; plain ⏎ falls
+        // through exactly like ⇧⏎ and inserts a newline instead.
+        if (!(e.metaKey || e.ctrlKey)) return
+        e.preventDefault()
+        if (!bulkParse || bulkParse.createCount === 0) return
+        onSubmitBulk?.(bulkParse, e.altKey ? 'backlog' : 'top')
+        return
+      }
+
       e.preventDefault()
 
       // ⌘⏎/Ctrl+⏎ folds into the same `projectMode` flag the checkbox uses —
@@ -199,7 +257,7 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
       <div className="ws-capture-panel" role="dialog" aria-modal="true" aria-label="Quick capture">
         <div className="ws-capture-input-wrap">
           <div className="ws-capture-underlay" aria-hidden="true" ref={underlayRef}>
-            {renderHighlighted(value, projectMode ? [] : capture.tokens)}
+            {renderHighlighted(value, projectMode || importMode ? [] : capture.tokens)}
           </div>
           <textarea
             ref={textareaRef}
@@ -220,17 +278,58 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
             aria-label="Quick capture item"
           />
         </div>
-        <label className="ws-capture-project-toggle">
-          <input
-            type="checkbox"
-            checked={projectMode}
-            onChange={(e) => setProjectMode(e.target.checked)}
-          />
-          Project
-        </label>
-        <div className="ws-capture-resolved">{resolved || ' '}</div>
+        {importMode ? null : (
+          <label className="ws-capture-project-toggle">
+            <input
+              type="checkbox"
+              checked={projectMode}
+              onChange={(e) => setProjectMode(e.target.checked)}
+            />
+            Project
+          </label>
+        )}
+        {importMode && bulkParse ? (
+          <BulkPreview parse={bulkParse} projects={projects} />
+        ) : (
+          <div className="ws-capture-resolved">{resolved || ' '}</div>
+        )}
+        {importMode && bulkParse ? (
+          <div className="ws-capture-bulk-actions">
+            <button
+              type="button"
+              className="ws-capture-bulk-btn ws-capture-bulk-btn--ghost"
+              disabled={bulkParse.createCount === 0}
+              onClick={() => onSubmitBulk?.(bulkParse, 'backlog')}
+            >
+              Add to backlog
+            </button>
+            <button
+              type="button"
+              className="ws-capture-bulk-btn ws-capture-bulk-btn--primary"
+              disabled={bulkParse.createCount === 0}
+              onClick={() => onSubmitBulk?.(bulkParse, 'top')}
+            >
+              Create {bulkParse.createCount} item{bulkParse.createCount === 1 ? '' : 's'}
+            </button>
+          </div>
+        ) : null}
         <div className="ws-capture-hints">
-          {projectMode ? (
+          {importMode ? (
+            <>
+              <span>
+                <kbd>⏎</kbd> new line
+              </span>
+              <span>
+                <kbd>⌘⏎</kbd> create at top
+              </span>
+              <span>
+                <kbd>⌘⌥⏎</kbd> add to backlog
+              </span>
+              <span>
+                <kbd>esc</kbd> close
+              </span>
+            </>
+          ) : projectMode ? (
             <>
               <span>
                 <kbd>⏎</kbd> create project
@@ -262,6 +361,58 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
             </>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The import-mode preview: a count plus a scrollable, height-bounded list of
+ * every parsed line (the `max-height` cap lives in `QuickCapture.css` — a
+ * 100+ line paste must preview inline, never blow the overlay past the
+ * viewport). Skipped lines and possible-duplicate/extra-column warnings get
+ * a visibly distinct treatment so a scan of the list tells you what's about
+ * to happen before you commit to it.
+ */
+function BulkPreview({ parse, projects }: { parse: BulkParse; projects: readonly Project[] }): JSX.Element {
+  const skippedCount = parse.lines.length - parse.createCount
+  return (
+    <div className="ws-capture-bulk">
+      <div className="ws-capture-bulk-header">
+        Create {parse.createCount} item{parse.createCount === 1 ? '' : 's'}
+        {skippedCount > 0 ? (
+          <span className="ws-capture-bulk-skipped-count"> · {skippedCount} skipped</span>
+        ) : null}
+      </div>
+      <div className="ws-capture-bulk-list" role="list">
+        {parse.lines.map((line, i) => {
+          const project = line.projectId ? projects.find((p) => p.id === line.projectId) : undefined
+          return (
+            <div
+              key={i}
+              role="listitem"
+              className={
+                'ws-capture-bulk-line' +
+                (line.skipped
+                  ? ' ws-capture-bulk-line--skipped'
+                  : line.reason
+                    ? ' ws-capture-bulk-line--warn'
+                    : '')
+              }
+            >
+              <span className="ws-capture-bulk-title">
+                {line.skipped ? line.raw.trim() || '(blank line)' : line.title}
+              </span>
+              {!line.skipped && line.due ? (
+                <span className="ws-capture-bulk-meta ws-capture-bulk-meta--due">{formatDue(line.due)}</span>
+              ) : null}
+              {!line.skipped && project ? (
+                <span className="ws-capture-bulk-meta ws-capture-bulk-meta--project">{project.name}</span>
+              ) : null}
+              {line.reason ? <span className="ws-capture-bulk-reason">{line.reason}</span> : null}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

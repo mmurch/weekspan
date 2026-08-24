@@ -1,0 +1,61 @@
+/*
+ * Filter field — replaces the inert `.ws-filter` span in the top bar
+ * (`src/styles/app.css`). Deliberately a DIFFERENT class name
+ * (`.ws-filter-field`, not `.ws-filter`) so this stylesheet never collides
+ * with app.css's existing rule for the span it replaces; wiring this
+ * component into `App.tsx` in place of that span leaves the old
+ * `.ws-filter` rule unused, which is fine to leave as dead CSS since this
+ * task doesn't touch app.css.
+ *
+ * Visually matches the span's box (border, radius, font, sizing) at rest —
+ * see app.css lines ~111-119 — plus a focus ring and an optional trailing
+ * match-count / "no matches" indicator.
+ */
+
+.ws-filter-field {
+  flex: 1;
+  max-width: 250px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-btn);
+  background: transparent;
+}
+
+.ws-filter-field:focus-within {
+  border-color: var(--ws-sel-ring);
+  box-shadow: 0 0 0 1px var(--ws-sel-ring);
+}
+
+.ws-filter-field--active {
+  border-color: var(--ws-hair-strong);
+}
+
+.ws-filter-field-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 400 11px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-filter-field-input::placeholder {
+  color: var(--ws-ink-4);
+}
+
+.ws-filter-field-count {
+  flex: none;
+  font: 400 10px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+  white-space: nowrap;
+}
+
+.ws-filter-field-count--empty {
+  color: var(--ws-due-fg, var(--ws-ink-3));
+  font-weight: 500;
+}

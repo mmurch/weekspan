@@ -14,14 +14,14 @@ const today: IsoDate = '2026-08-26' // Wednesday, 2026-W35, matches viewModel.te
  */
 function fakeKeyEvent(
   key: string,
-  opts: { alt?: boolean; meta?: boolean; ctrl?: boolean; target?: unknown } = {},
+  opts: { alt?: boolean; shift?: boolean; meta?: boolean; ctrl?: boolean; target?: unknown } = {},
 ): KeyboardEvent {
   return {
     key,
     altKey: opts.alt ?? false,
     metaKey: opts.meta ?? false,
     ctrlKey: opts.ctrl ?? false,
-    shiftKey: false,
+    shiftKey: opts.shift ?? false,
     target: opts.target ?? null,
   } as unknown as KeyboardEvent
 }
@@ -57,6 +57,14 @@ describe('resolveKey — bindings', () => {
     expect(resolveKey(fakeKeyEvent('q'))).toBeNull()
   })
 
+  it('Tab resolves to indent', () => {
+    expect(resolveKey(fakeKeyEvent('Tab'))).toEqual({ kind: 'indent' })
+  })
+
+  it('Shift+Tab resolves to outdent', () => {
+    expect(resolveKey(fakeKeyEvent('Tab', { shift: true }))).toEqual({ kind: 'outdent' })
+  })
+
   it('a plain arrow key does not also fire the Alt binding', () => {
     // Sanity: pressing bare ArrowUp must not be misread as the reorder binding.
     expect(resolveKey(fakeKeyEvent('ArrowUp'))).not.toEqual({ kind: 'reorder', dir: 'up' })
@@ -85,6 +93,12 @@ describe('resolveKey — refusals', () => {
   it('returns null when the event target is contenteditable', () => {
     const target = { tagName: 'DIV', isContentEditable: true }
     expect(resolveKey(fakeKeyEvent('x', { target }))).toBeNull()
+  })
+
+  it('Tab is ignored while focus is in a text field, so Tab still works in the editor', () => {
+    const target = { tagName: 'TEXTAREA' }
+    expect(resolveKey(fakeKeyEvent('Tab', { target }))).toBeNull()
+    expect(resolveKey(fakeKeyEvent('Tab', { shift: true, target }))).toBeNull()
   })
 
   it('a typing target does not suppress Escape or arrow navigation from working elsewhere', () => {
@@ -197,6 +211,50 @@ describe('applyAction — reorder', () => {
   it('a null selection writes nothing', () => {
     const result = applyAction({ kind: 'reorder', dir: 'up' }, null, weekspan, today)
     expect(result).toEqual({ weekspan: null, selection: null })
+  })
+})
+
+describe('applyAction — indent/outdent', () => {
+  const weekspan = demoWeekspan(today)
+
+  it('indent nests the selected item under the preceding root', () => {
+    const sel = selectionFromCell('item-roadmap', today)
+    const result = applyAction({ kind: 'indent' }, sel, weekspan, today)
+    expect(result.weekspan).not.toBeNull()
+    const item = result.weekspan!.items.find((i) => i.id === 'item-roadmap')!
+    expect(item.parentId).toBe('item-tiles')
+    expect(result.selection).toEqual(sel)
+  })
+
+  it('indent refuses (writes nothing) on the first root, keeping selection', () => {
+    const sel = selectionFromCell('item-tiles', today)
+    const result = applyAction({ kind: 'indent' }, sel, weekspan, today)
+    expect(result).toEqual({ weekspan: null, selection: sel })
+  })
+
+  it('outdent promotes a child back to a root', () => {
+    const sel = selectionFromCell('item-order-dishwasher', today)
+    const result = applyAction({ kind: 'outdent' }, sel, weekspan, today)
+    expect(result.weekspan).not.toBeNull()
+    const item = result.weekspan!.items.find((i) => i.id === 'item-order-dishwasher')!
+    expect(item.parentId == null).toBe(true)
+  })
+
+  it('outdent refuses (writes nothing) on a root', () => {
+    const sel = selectionFromCell('item-roadmap', today)
+    const result = applyAction({ kind: 'outdent' }, sel, weekspan, today)
+    expect(result).toEqual({ weekspan: null, selection: sel })
+  })
+
+  it('a null selection writes nothing for either', () => {
+    expect(applyAction({ kind: 'indent' }, null, weekspan, today)).toEqual({
+      weekspan: null,
+      selection: null,
+    })
+    expect(applyAction({ kind: 'outdent' }, null, weekspan, today)).toEqual({
+      weekspan: null,
+      selection: null,
+    })
   })
 })
 

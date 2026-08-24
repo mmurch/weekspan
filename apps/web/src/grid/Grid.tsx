@@ -51,6 +51,12 @@ export interface GridInteraction {
   projectRows?: ProjectRow[] | null
   onToggleGroup?: (projectId: string | null) => void
   onPickColor?: (projectId: string, x: number, y: number) => void
+  /** Clicking a date header toggles vacation for that day. */
+  onToggleVacation?: (date: IsoDate) => void
+  /** Notes editing, mirroring title editing. */
+  editingNotesId?: string | null
+  onStartEditNotes?: (itemId: string) => void
+  onCommitNotes?: (notes: string) => void
 }
 import './Grid.css'
 
@@ -76,7 +82,15 @@ function columnTemplate(weekCount: number): string {
   return `${ITEM_COLUMN.grip}px ${ITEM_COLUMN.bar}px ${ITEM_COLUMN.title}px ${`${week} `.repeat(weekCount).trim()}`
 }
 
-function DayHeader({ day, isPast }: { day: DayColumn; isPast: boolean }): JSX.Element {
+function DayHeader({
+  day,
+  isPast,
+  onToggleVacation,
+}: {
+  day: DayColumn
+  isPast: boolean
+  onToggleVacation?: (date: IsoDate) => void
+}): JSX.Element {
   const cls = [
     'ws-day',
     day.isWeekend ? 'ws-day--weekend' : '',
@@ -87,7 +101,7 @@ function DayHeader({ day, isPast }: { day: DayColumn; isPast: boolean }): JSX.El
 
   if (day.isToday) {
     return (
-      <div className={cls}>
+      <div className={cls} onClick={() => onToggleVacation?.(day.date)} title="Toggle vacation">
         <span className="ws-day-disc">
           <span>{day.letter}</span>
           <span>{day.dayOfMonth}</span>
@@ -97,7 +111,7 @@ function DayHeader({ day, isPast }: { day: DayColumn; isPast: boolean }): JSX.El
   }
   if (day.isVacation) {
     return (
-      <div className={cls}>
+      <div className={cls} onClick={() => onToggleVacation?.(day.date)} title="Toggle vacation">
         <span className="ws-day-disc ws-day-disc--vacation">
           <span>{day.letter}</span>
           <span>{day.dayOfMonth}</span>
@@ -106,7 +120,7 @@ function DayHeader({ day, isPast }: { day: DayColumn; isPast: boolean }): JSX.El
     )
   }
   return (
-    <div className={cls}>
+    <div className={cls} onClick={() => onToggleVacation?.(day.date)} title="Toggle vacation">
       <span className="ws-day-letter">{day.letter}</span>
       <span className="ws-day-num">{day.dayOfMonth}</span>
     </div>
@@ -275,8 +289,15 @@ function Row({
             {row.title}
           </span>
         )}
-        {row.notes ? (
-          <span className="ws-notes">
+        {interaction.editingNotesId === row.id ? (
+          <InlineEdit
+            initial={row.notes ?? ''}
+            placeholder="Notes — one per line"
+            onCommit={(t) => interaction.onCommitNotes?.(t)}
+            onCancel={() => interaction.onCancelEdit?.()}
+          />
+        ) : row.notes ? (
+          <span className="ws-notes" onClick={() => interaction.onStartEditNotes?.(row.id)}>
             {row.notes
               .split('\n')
               .map((line) => line.replace(/^\s*[-*]\s*/, ''))
@@ -451,7 +472,12 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
       <div className="ws-head-blank" />
       {vm.weeks.map((week) =>
         [...week.weekdays, ...week.weekend].map((day) => (
-          <DayHeader day={day} isPast={week.isPast} key={day.date} />
+          <DayHeader
+            day={day}
+            isPast={week.isPast}
+            {...(interaction.onToggleVacation ? { onToggleVacation: interaction.onToggleVacation } : {})}
+            key={day.date}
+          />
         )),
       )}
 
