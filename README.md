@@ -23,7 +23,34 @@ iCloud), so multi-device works without a backend and agents can edit it through 
 npm install
 npm test          # all packages
 npm run typecheck # must be clean; a green test run does not imply this
+npm run verify    # the above PLUS the single-file build, opened over file://
 ```
+
+## How to iterate
+
+Two environments, and the difference between them is packaging, not behaviour.
+
+**`npm run dev -w @weekspan/web`** for feature work. `http://localhost` is a secure
+context, so the File System Access API behaves exactly as it does from a file — anything
+you build here works there. Hot reload makes this the only sane place to iterate on UI.
+
+**`npm run verify`** before committing. The shipping artifact is a single self-contained
+HTML file opened over `file://`, where three things differ from the dev server: the bundle
+is a classic IIFE rather than an ES module, JS and CSS are inlined rather than linked, and
+CORS blocks every external fetch. Every packaging bug this project has hit lived in exactly
+that gap and passed all tests — an inliner that spliced HTML into the bundle, a script that
+ran before `#root` existed, and a second Vite entry that silently broke the build. So the
+check has to be routine, not remembered.
+
+**To actually use it day to day**, build the single file and open that rather than the dev
+server:
+
+```bash
+npm run build:single -w @weekspan/web   # → apps/web/dist-single/weekspan.html
+```
+
+It keeps working while development continues, and it is the same artifact you would hand
+to someone else.
 
 Build and use the CLI:
 
