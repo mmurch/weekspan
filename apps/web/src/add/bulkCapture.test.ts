@@ -116,13 +116,14 @@ describe('parseBulk', () => {
     expect(parse.lines[0]!.reason).toBe('blank line')
   })
 
-  it('flags a title repeated earlier in the same paste as a possible duplicate, without dropping it', () => {
-    const parse = parseBulk('buy milk\nwalk dog\nBuy Milk', projects, today)
+  
+  it('creates every duplicate as its own item, not collapsed into one', () => {
+    const w = createWeekspan()
+    const parse = parseBulk('buy milk\nbuy milk\nbuy milk', projects, today)
+    expect(parse.createCount).toBe(3)
 
-    expect(parse.lines[2]!.skipped).toBe(false)
-    expect(parse.lines[2]!.title).toBe('Buy Milk')
-    expect(parse.lines[2]!.reason).toContain('possible duplicate')
-    expect(parse.createCount).toBe(3) // still created — the user decides
+    const next = commitBulk(w, parse, 'backlog')!
+    expect(orderItems(next.items).map((i) => i.title)).toEqual(['buy milk', 'buy milk', 'buy milk'])
   })
 
   it('handles empty input as a single blank line with nothing to create', () => {
@@ -236,5 +237,29 @@ describe('commitBulk', () => {
     for (const item of next.items) {
       if (before.has(item.id)) expect(item.rank).toBe(before.get(item.id))
     }
+  })
+})
+
+describe('repeated titles are warned about, never blocked', () => {
+  it('flags a repeat but still creates it', () => {
+    // Pasting the same column twice during a migration is the real hazard —
+    // hundreds of duplicates, no undo. Warning costs nothing; blocking would be
+    // wrong, since the same task on two days is legitimate.
+    const parse = parseBulk('buy milk\nbuy milk', [], today)
+    expect(parse.createCount).toBe(2)
+    expect(parse.lines[0]!.reason).toBeUndefined()
+    expect(parse.lines[1]!.reason).toMatch(/repeat/i)
+    expect(parse.lines[1]!.skipped).toBe(false)
+  })
+
+  it('is case-insensitive', () => {
+    const parse = parseBulk('Buy Milk\nbuy milk', [], today)
+    expect(parse.lines[1]!.reason).toMatch(/repeat/i)
+  })
+
+  it('still creates every repeat as its own item', () => {
+    const parse = parseBulk('a\na\na', [], today)
+    const next = commitBulk(createWeekspan(), parse, 'backlog')
+    expect(next!.items.filter((i) => i.title === 'a')).toHaveLength(3)
   })
 })

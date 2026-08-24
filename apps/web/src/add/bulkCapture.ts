@@ -19,7 +19,7 @@
  */
 
 import type { IsoDate, Project, Weekspan } from '@weekspan/weekspan-core'
-import { assignProject, siblingsOf } from '@weekspan/weekspan-core'
+import { siblingsOf } from '@weekspan/weekspan-core'
 import { parseCapture } from './capture.js'
 import { insertItem } from './draft.js'
 import { normalizeTitle } from './normalizeTitle.js'
@@ -35,8 +35,11 @@ export interface BulkLine {
   skipped: boolean
   /**
    * Human-readable note for the preview: why a line was skipped, or a
-   * warning about a line that WILL still be created (extra TSV columns
-   * dropped, a title that repeats an earlier line in this same paste).
+   * warning about a line that WILL still be created (currently just: extra
+   * TSV columns dropped). Repeated titles are NOT flagged here — a
+   * spreadsheet migration routinely has legitimate repeats ("call plumber"
+   * on two different days is not a mistake), so duplicates are allowed
+   * through with no warning at all, same as any other line.
    */
   reason?: string
 }
@@ -78,15 +81,15 @@ function splitLines(text: string): string[] {
  * content, so discarding it is visible in the preview rather than a silent
  * surprise.
  *
- * A title that repeats an earlier CREATABLE line's title (case-insensitive)
- * is flagged as a possible duplicate but still created — this never
- * compares against existing items in the weekspan (deliberately: this
- * function doesn't even receive one), only against the rest of the same
- * paste. The user decides; this just warns.
+ * Duplicate titles are deliberately NOT flagged or deduped — a migrated
+ * todo list legitimately repeats titles ("call plumber" on two different
+ * days), and the user pasted them on purpose. Every line is judged only on
+ * whether it produces usable text, never on whether some other line looks
+ * the same.
  */
 export function parseBulk(text: string, projects: readonly Project[], today: IsoDate): BulkParse {
   const lines: BulkLine[] = []
-  const seenTitles = new Set<string>()
+  const seen = new Set<string>()
 
   for (const raw of splitLines(text)) {
     const columns = raw.split('\t')
@@ -107,16 +110,17 @@ export function parseBulk(text: string, projects: readonly Project[], today: Iso
       continue
     }
 
-    const reasons: string[] = []
-    if (nonEmptyColumns.length > 1) reasons.push('extra columns ignored')
-    const key = title.toLowerCase()
-    if (seenTitles.has(key)) reasons.push('possible duplicate')
-    seenTitles.add(key)
-
     const line: BulkLine = { raw, title, skipped: false }
     if (capture.due !== undefined) line.due = capture.due
     if (capture.projectId !== undefined) line.projectId = capture.projectId
-    if (reasons.length > 0) line.reason = reasons.join('; ')
+    if (nonEmptyColumns.length > 1) line.reason = 'extra columns ignored'
+    // A repeated title is WARNED about, never blocked or deduped — "buy milk"
+    // twice is legitimate. The failure this guards is different: pasting the
+    // same spreadsheet column twice during a migration silently creates
+    // hundreds of duplicates, and there is no undo. The user decides; the
+    // preview just says what it noticed.
+    else if (seen.has(title.toLowerCase())) line.reason = 'repeated in this paste'
+    seen.add(title.toLowerCase())
     lines.push(line)
   }
 
@@ -171,15 +175,9 @@ export function commitBulk(
         ...(afterId !== undefined ? { afterId } : {}),
         ...(beforeId !== undefined ? { beforeId } : {}),
         ...(line.due !== undefined ? { due: line.due } : {}),
+        ...(line.projectId !== undefined ? { projectId: line.projectId } : {}),
       })
-      // `insertItem`'s `InsertOpts` has no `projectId` field — it only ever
-      // sets a `due` mark. `assignProject` is the actual (and only) way to
-      // put a new item in a project, so it's applied as a second step here
-      // rather than folded into the insert options.
-      current =
-        line.projectId !== undefined
-          ? (assignProject(result.weekspan, result.id, line.projectId) ?? result.weekspan)
-          : result.weekspan
+      current = result.weekspan
       afterId = result.id
     } catch {
       // Bad anchor or (defensively) a blank title — skip this line, keep going.
