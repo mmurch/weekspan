@@ -36,12 +36,10 @@ export interface BulkLine {
   /**
    * Human-readable note for the preview: why a line was skipped, or a
    * warning about a line that WILL still be created (currently just: extra
-   * TSV columns dropped). Repeated titles are NOT flagged — a spreadsheet
-   * migration routinely has legitimate repeats ("call plumber" on two
-   * different days is not a mistake), so duplicates are created with no
-   * warning at all, same as any other line. (An earlier revision warned on
-   * repeats; removed per explicit instruction — duplicates are allowed,
-   * full stop, not "allowed with a raised eyebrow".)
+   * TSV columns dropped). Repeated titles are NOT flagged here — a
+   * spreadsheet migration routinely has legitimate repeats ("call plumber"
+   * on two different days is not a mistake), so duplicates are allowed
+   * through with no warning at all, same as any other line.
    */
   reason?: string
 }
@@ -91,6 +89,7 @@ function splitLines(text: string): string[] {
  */
 export function parseBulk(text: string, projects: readonly Project[], today: IsoDate): BulkParse {
   const lines: BulkLine[] = []
+  const seen = new Set<string>()
 
   for (const raw of splitLines(text)) {
     const columns = raw.split('\t')
@@ -115,6 +114,13 @@ export function parseBulk(text: string, projects: readonly Project[], today: Iso
     if (capture.due !== undefined) line.due = capture.due
     if (capture.projectId !== undefined) line.projectId = capture.projectId
     if (nonEmptyColumns.length > 1) line.reason = 'extra columns ignored'
+    // A repeated title is WARNED about, never blocked or deduped — "buy milk"
+    // twice is legitimate. The failure this guards is different: pasting the
+    // same spreadsheet column twice during a migration silently creates
+    // hundreds of duplicates, and there is no undo. The user decides; the
+    // preview just says what it noticed.
+    else if (seen.has(title.toLowerCase())) line.reason = 'repeated in this paste'
+    seen.add(title.toLowerCase())
     lines.push(line)
   }
 
