@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weekspan — ramp probe</title>
+    <!--
+      Standalone harness for scripts/probe-ramp.mjs — NOT part of the shipped
+      app (main.tsx / App.tsx are untouched). It exists only to render the
+      six-token project bar ramp and the ProjectColorPicker in isolation, at
+      a size actually big enough to eyeball hue separation and equal
+      lightness, since a 3px grid bar can't be judged from a thumbnail.
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/projects/rampProbeMain.tsx"></script>
+  </body>
+</html>

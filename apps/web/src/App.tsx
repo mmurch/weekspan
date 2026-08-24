@@ -19,6 +19,11 @@ import { useDragPreview } from './interaction/useDragPreview.js'
 import { QuickCapture } from './add/QuickCapture.js'
 import { insertItem } from './add/draft.js'
 import { commitEdit, type EditTarget } from './add/commitEdit.js'
+import { commitProjectCapture } from './add/projectCapture.js'
+import { buildProjectView } from './grid/projectView.js'
+import { applyProjectDrop, dropFromRows } from './interaction/projectDrag.js'
+import { ProjectColorPicker } from './projects/ProjectColorPicker.js'
+import { setProjectColor } from '@weekspan/weekspan-core'
 import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
 import { closeOutState, performClose } from './closeout/closeoutActions.js'
 import { CloseOutPanel } from './closeout/CloseOutPanel.js'
@@ -86,6 +91,11 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
   const [closeOutOpen, setCloseOutOpen] = useState(false)
   /** Which title is being edited in place, or which gap holds a new draft. */
   const [editing, setEditing] = useState<EditTarget | null>(null)
+  const [view, setView] = useState<'priority' | 'project'>('priority')
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string | null>>(new Set())
+  const [colorPicker, setColorPicker] = useState<{ projectId: string; x: number; y: number } | null>(
+    null,
+  )
 
   /**
    * Zoom is applied to the document root, never to an inner element.
@@ -110,6 +120,14 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
   const vm = useMemo(
     () => (weekspan ? buildGrid(weekspan, today, fillWeeks) : null),
     [weekspan, today, fillWeeks],
+  )
+
+  const projectVm = useMemo(
+    () =>
+      weekspan && view === 'project'
+        ? buildProjectView(weekspan, today, { minWeeks: fillWeeks, collapsed })
+        : null,
+    [weekspan, today, fillWeeks, view, collapsed],
   )
 
   // A selection pointing at an item that no longer exists is worse than none —
@@ -139,7 +157,25 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
     [mutate],
   )
 
-  const { state: dragState, gripHandlers } = useDragPreview(vm, handleReorder)
+  /**
+   * In Project view a drop means two things at once — which group the item now
+   * belongs to, and where it sits in the single global rank spine. Neighbours are
+   * read from the rows on screen, so what you see is what commits.
+   */
+  const handleProjectReorder = useCallback(
+    (itemId: string): void => {
+      if (!projectVm) return
+      const drop = dropFromRows(projectVm.rows, itemId)
+      if (!drop) return
+      void mutate((w) => applyProjectDrop(w, drop))
+    },
+    [projectVm, mutate],
+  )
+
+  const { state: dragState, gripHandlers } = useDragPreview(
+    vm,
+    view === 'project' ? (id) => handleProjectReorder(id) : handleReorder,
+  )
 
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
@@ -200,7 +236,14 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
     <div className="ws-shell">
       <Rail projectColors={[...new Set(vm.rows.map((r) => r.projectColorToken).filter(Boolean))] as string[]} />
       <div className="ws-main">
-        <TopBar today={today} name={store.name} zoom={zoom} onZoom={setZoom} />
+        <TopBar
+          today={today}
+          name={store.name}
+          zoom={zoom}
+          onZoom={setZoom}
+          view={view}
+          onView={setView}
+        />
         {lastMerged ? (
           <Banner>
             Another writer changed this file; changes were merged.
@@ -232,6 +275,16 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
             draggingId={dragState.draggingId}
             editingId={editing?.kind === 'existing' ? editing.itemId : null}
             draftAfterId={editing?.kind === 'new' ? editing.afterId : null}
+            projectRows={projectVm?.rows ?? null}
+            onToggleGroup={(projectId) =>
+              setCollapsed((cur) => {
+                const next = new Set(cur)
+                if (next.has(projectId)) next.delete(projectId)
+                else next.add(projectId)
+                return next
+              })
+            }
+            onPickColor={(projectId, x, y) => setColorPicker({ projectId, x, y })}
             onStartEdit={(itemId) => setEditing({ kind: 'existing', itemId })}
             onInsertBetween={(afterId, beforeId, parentId) =>
               setEditing({ kind: 'new', afterId, beforeId, parentId })
@@ -266,7 +319,12 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
           projects={weekspan.projects}
           today={today}
           onClose={() => setCaptureOpen(false)}
-          onSubmit={(capture, position) => {
+          onSubmit={(capture, position, mode) => {
+            if (mode === 'project') {
+              void mutate((w) => commitProjectCapture(w, capture.title))
+              setCaptureOpen(false)
+              return
+            }
             void mutate((w) => {
               try {
                 const roots = w.items.filter((i) => i.parentId == null)
@@ -294,6 +352,19 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
             })
             setCaptureOpen(false)
           }}
+        />
+      ) : null}
+
+      {colorPicker ? (
+        <ProjectColorPicker
+          value={
+            weekspan.projects.find((p) => p.id === colorPicker.projectId)?.colorToken ?? 'barA'
+          }
+          onChange={(token) => {
+            void mutate((w) => setProjectColor(w, colorPicker.projectId, token))
+            setColorPicker(null)
+          }}
+          onClose={() => setColorPicker(null)}
         />
       ) : null}
 
@@ -333,11 +404,15 @@ function TopBar({
   name,
   zoom,
   onZoom,
+  view,
+  onView,
 }: {
   today: string
   name: string
   zoom: number
   onZoom: (z: number) => void
+  view: 'priority' | 'project'
+  onView: (v: 'priority' | 'project') => void
 }): JSX.Element {
   const label = new Date(`${today}T00:00:00Z`)
     .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
@@ -347,8 +422,20 @@ function TopBar({
       <span className="ws-filepicker">
         {name} <span className="ws-caret">▾</span>
       </span>
-      <span className="ws-seg ws-seg--active">Priority</span>
-      <span className="ws-seg">Project</span>
+      <button
+        className={`ws-seg${view === 'priority' ? ' ws-seg--active' : ''}`}
+        type="button"
+        onClick={() => onView('priority')}
+      >
+        Priority
+      </button>
+      <button
+        className={`ws-seg${view === 'project' ? ' ws-seg--active' : ''}`}
+        type="button"
+        onClick={() => onView('project')}
+      >
+        Project
+      </button>
       <span className="ws-filter">/ filter</span>
       <span className="ws-topbar-spacer" />
       <ZoomPicker zoom={zoom} onZoom={onZoom} />

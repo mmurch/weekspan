@@ -105,6 +105,22 @@
   color: var(--ws-sel-ring);
 }
 
+.ws-capture-project-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font: 500 11px/1.4 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+  user-select: none;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.ws-capture-project-toggle input {
+  accent-color: var(--ws-sel-ring);
+}
+
 .ws-capture-resolved {
   margin-top: 8px;
   padding-top: 8px;

@@ -1,0 +1,61 @@
+/*
+ * Project colour picker popover: six swatches in a row. Same shell
+ * conventions as the cell context menu (src/interaction/CellMenu.css) —
+ * panel fill, hairline border, soft shadow, radius-menu corners — so it
+ * reads as part of the same UI language. Every colour is a `--ws-*` custom
+ * property; nothing here is a literal, so it repaints correctly across
+ * Paper, Solarized dark and Warm dark without any per-theme overrides.
+ */
+
+.ws-colorpicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-menu);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.ws-colorpicker-swatch {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-4);
+  background: var(--ws-swatch-color);
+  cursor: pointer;
+}
+
+.ws-colorpicker-swatch:hover {
+  /* A subtle lift rather than a colour shift — the swatch's own colour is
+     the whole point and must not be tinted by a hover state. */
+  transform: scale(1.08);
+}
+
+.ws-colorpicker-swatch:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 2px;
+}
+
+/* The current colour's mark. Sits on top of the swatch fill, so its own
+   colour has to work against any of the six ramp hues in any theme —
+   panel-coloured glyph with a soft dark backing disc reads reliably across
+   all eighteen (six swatches x three themes) combinations, unlike a fixed
+   ink colour which would vanish against a similarly-toned swatch. */
+.ws-colorpicker-check {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ws-panel);
+  font-size: 10px;
+  line-height: 1;
+}

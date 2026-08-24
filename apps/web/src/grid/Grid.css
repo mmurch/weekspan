@@ -506,3 +506,69 @@ button.ws-week-close--blocked {
 
 /* Titles invite editing without shouting about it. */
 .ws-title-text { cursor: text; }
+
+/* ---- project view dividers ------------------------------------------- */
+
+/*
+ * Spans the full grid width so the week columns run uninterrupted behind the
+ * group header, rather than the header being boxed into the item column.
+ */
+.ws-divider {
+  grid-column: 1 / -1;
+  position: sticky;
+  left: 0;
+  width: max-content;
+  min-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px 5px 8px;
+  background: var(--ws-subtle);
+  border-bottom: 1px solid var(--ws-hair);
+  border-top: 1px solid var(--ws-hair);
+}
+
+.ws-divider-disclosure {
+  border: none;
+  background: transparent;
+  color: var(--ws-ink-3);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.ws-divider-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+
+/* The unassigned bucket has no colour to pick, so its swatch is inert. */
+.ws-divider-swatch--none {
+  border: 1px dashed var(--ws-ink-4);
+  background: transparent;
+  cursor: default;
+}
+
+.ws-divider-name {
+  font: 600 12px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-divider-meta {
+  font: 400 9.5px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+}
+
+/*
+ * Items sit one indent in, and their bar drops to 55% — the group header already
+ * states the project, so the bar is reinforcement here rather than the only
+ * signal it is in Priority view.
+ */
+.ws-grid:has(.ws-divider) .ws-title { padding-left: 22px; }
+.ws-grid:has(.ws-divider) .ws-bar { opacity: 0.55; }

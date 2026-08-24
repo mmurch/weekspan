@@ -78,6 +78,17 @@ export {
 } from './marks.js'
 
 export {
+  PROJECT_COLOR_TOKENS,
+  addProject,
+  assignProject,
+  findProjectByName,
+  nextProjectColor,
+  removeProject,
+  renameProject,
+  setProjectColor,
+} from './projects.js'
+
+export {
   currentPeriod,
   nextOccurrence,
   occurrencesIn,

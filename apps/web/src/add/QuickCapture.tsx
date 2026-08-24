@@ -22,6 +22,15 @@ import './QuickCapture.css'
  * newline instead of submitting, and `esc` closes without submitting. What
  * "top" and "backlog" resolve to (which afterId/beforeId anchors) is entirely
  * the caller's concern.
+ *
+ * There's also a project-creation mode, toggled by a single `projectMode`
+ * boolean that the "Project" checkbox and the `⌘⏎`/`Ctrl+⏎` shortcut both
+ * read from and write to — deliberately ONE state, not two parallel paths
+ * that could drift out of sync: ticking the checkbox makes plain `⏎` create a
+ * project too, exactly as `⌘⏎` does. While in project mode, due/project TOKEN
+ * PARSING IS SUPPRESSED (a project named "thu", or one whose name happens to
+ * collide with an existing project, must not get silently mangled by
+ * `parseCapture`) — the whole typed string becomes the project name.
  */
 
 const WEEKDAY_ABBR: Record<number, string> = {
@@ -97,8 +106,15 @@ export interface QuickCaptureProps {
   /** For resolving a typed project word/prefix and for the resolved-line project name. */
   projects: readonly Project[]
   today: IsoDate
-  /** `position` is 'top' on plain `⏎`, 'backlog' on `⌥⏎`. */
-  onSubmit: (capture: Capture, position: 'top' | 'backlog') => void
+  /**
+   * `position` is 'top' on plain `⏎`, 'backlog' on `⌥⏎` (always 'top' for
+   * `mode: 'project'` — backlog placement has no meaning for a project).
+   * `mode` is 'project' when submitted via `⌘⏎`/`Ctrl+⏎` or with the
+   * "Project" checkbox ticked; in that case `capture.title` is the project
+   * name (untouched by due/project token parsing) and `capture.due` /
+   * `capture.projectId` are never set.
+   */
+  onSubmit: (capture: Capture, position: 'top' | 'backlog', mode: 'item' | 'project') => void
   onClose: () => void
 }
 
@@ -117,9 +133,16 @@ function autoGrow(el: HTMLTextAreaElement, underlay: HTMLDivElement | null): voi
 
 export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptureProps): JSX.Element {
   const [value, setValue] = useState('')
+  // Single source of truth for project-creation mode. Both the "Project"
+  // checkbox and the `⌘⏎`/`Ctrl+⏎` shortcut read/write this ONE flag — never
+  // two independently-tracked "is this a project" checks that could disagree.
+  const [projectMode, setProjectMode] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const underlayRef = useRef<HTMLDivElement>(null)
 
+  // Parsed unconditionally (cheap, and needed for item-mode submits), but its
+  // due/project tokens are deliberately ignored below whenever `projectMode`
+  // is on — see the module doc.
   const capture = useMemo(() => parseCapture(value, projects, today), [value, projects, today])
 
   useEffect(() => {
@@ -138,13 +161,32 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
       // handle it rather than submitting.
       if (e.shiftKey) return
       e.preventDefault()
+
+      // ⌘⏎/Ctrl+⏎ folds into the same `projectMode` flag the checkbox uses —
+      // pressing it while the box is unticked is equivalent to ticking it
+      // and then pressing plain ⏎.
+      const asProject = projectMode || e.metaKey || e.ctrlKey
+      if (asProject && !projectMode) setProjectMode(true)
+
+      if (asProject) {
+        const title = normalizeTitle(value)
+        if (title === '') return
+        onSubmit({ title, tokens: [] }, 'top', 'project')
+        return
+      }
+
       const title = normalizeTitle(capture.title)
       if (title === '') return
-      onSubmit({ ...capture, title }, e.altKey ? 'backlog' : 'top')
+      onSubmit({ ...capture, title }, e.altKey ? 'backlog' : 'top', 'item')
     }
   }
 
-  const resolved = resolvedLine(capture, projects)
+  const resolved = projectMode
+    ? (() => {
+        const name = normalizeTitle(value)
+        return name === '' ? '' : `new project · ${name}`
+      })()
+    : resolvedLine(capture, projects)
 
   return (
     <div
@@ -157,7 +199,7 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
       <div className="ws-capture-panel" role="dialog" aria-modal="true" aria-label="Quick capture">
         <div className="ws-capture-input-wrap">
           <div className="ws-capture-underlay" aria-hidden="true" ref={underlayRef}>
-            {renderHighlighted(value, capture.tokens)}
+            {renderHighlighted(value, projectMode ? [] : capture.tokens)}
           </div>
           <textarea
             ref={textareaRef}
@@ -178,20 +220,47 @@ export function QuickCapture({ projects, today, onSubmit, onClose }: QuickCaptur
             aria-label="Quick capture item"
           />
         </div>
+        <label className="ws-capture-project-toggle">
+          <input
+            type="checkbox"
+            checked={projectMode}
+            onChange={(e) => setProjectMode(e.target.checked)}
+          />
+          Project
+        </label>
         <div className="ws-capture-resolved">{resolved || ' '}</div>
         <div className="ws-capture-hints">
-          <span>
-            <kbd>⏎</kbd> add at top
-          </span>
-          <span>
-            <kbd>⇧⏎</kbd> new line
-          </span>
-          <span>
-            <kbd>⌥⏎</kbd> add to backlog
-          </span>
-          <span>
-            <kbd>esc</kbd> close
-          </span>
+          {projectMode ? (
+            <>
+              <span>
+                <kbd>⏎</kbd> create project
+              </span>
+              <span>
+                <kbd>⇧⏎</kbd> new line
+              </span>
+              <span>
+                <kbd>esc</kbd> close
+              </span>
+            </>
+          ) : (
+            <>
+              <span>
+                <kbd>⏎</kbd> add at top
+              </span>
+              <span>
+                <kbd>⇧⏎</kbd> new line
+              </span>
+              <span>
+                <kbd>⌥⏎</kbd> add to backlog
+              </span>
+              <span>
+                <kbd>⌘⏎</kbd> create project
+              </span>
+              <span>
+                <kbd>esc</kbd> close
+              </span>
+            </>
+          )}
         </div>
       </div>
     </div>

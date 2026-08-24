@@ -44,6 +44,9 @@
  *   barA        -> --ws-bar-a
  *   barB        -> --ws-bar-b
  *   barC        -> --ws-bar-c
+ *   barD        -> --ws-bar-d
+ *   barE        -> --ws-bar-e
+ *   barF        -> --ws-bar-f
  *   doneFgRow   -> --ws-done-fg-row
  *   vacBg       -> --ws-vac-bg
  *
@@ -108,9 +111,30 @@
   --ws-hl-bg: oklch(0.95 0.05 95);
   --ws-chip-bg: #ffffff;
   --ws-link-dot: oklch(0.72 0.11 250);
+  /* Project bar ramp — six tokens, equal L/C within the theme, hue-only
+     variation (design_handoff_todo_ledger/README.md, "Theme token table":
+     "extend the ramp as projects are added, keeping hue separation and
+     equal lightness within a theme"). barA/B/C are the original three;
+     barD/E/F reuse barA's L .62 / C .1 and fill the empty hue arc between
+     barC (green, 140) and barB (purple, 300) going the long way round
+     (through orange/yellow/red), spacing the six hues as evenly as the
+     fixed positions of A/B/C allow: 40/90/140/210/300/350 -> gaps of
+     50/50/70/90/50/50 degrees.
+     CVD note: that empty arc is exactly the red-green confusion band, so
+     barC (green, 140), barE (olive/chartreuse, 90) and barD (orange, 40)
+     read as one indistinct yellow-brown cluster under deuteranopia/
+     protanopia, and barC vs barF (rose, 350) is the classic red/green
+     confusion pair. barA (blue) and barB (purple) stay distinct from all
+     six under every common CVD type. The bar is never the only signal in
+     Project view (the name is right there) but it IS the only signal in
+     Priority view, so a project relying on barC/D/E/F for CVD users should
+     also be distinguishable by name/position, not colour alone. */
   --ws-bar-a: oklch(0.62 0.1 210);
   --ws-bar-b: oklch(0.6 0.11 300);
   --ws-bar-c: oklch(0.63 0.09 140);
+  --ws-bar-d: oklch(0.62 0.1 40);
+  --ws-bar-e: oklch(0.62 0.1 90);
+  --ws-bar-f: oklch(0.62 0.1 350);
   --ws-done-fg-row: rgba(0, 0, 0, 0.4);
   --ws-vac-bg: rgba(0, 0, 0, 0.05);
 }
@@ -149,6 +173,9 @@
     --ws-bar-a: oklch(0.68 0.09 210);
     --ws-bar-b: oklch(0.7 0.1 45);
     --ws-bar-c: oklch(0.68 0.08 140);
+    --ws-bar-d: oklch(0.68 0.09 260);
+    --ws-bar-e: oklch(0.68 0.09 305);
+    --ws-bar-f: oklch(0.68 0.09 350);
     --ws-done-fg-row: rgba(232, 226, 214, 0.42);
     --ws-vac-bg: rgba(255, 255, 255, 0.09);
   }
@@ -184,6 +211,9 @@
   --ws-bar-a: oklch(0.62 0.1 210);
   --ws-bar-b: oklch(0.6 0.11 300);
   --ws-bar-c: oklch(0.63 0.09 140);
+  --ws-bar-d: oklch(0.62 0.1 40);
+  --ws-bar-e: oklch(0.62 0.1 90);
+  --ws-bar-f: oklch(0.62 0.1 350);
   --ws-done-fg-row: rgba(0, 0, 0, 0.4);
   --ws-vac-bg: rgba(0, 0, 0, 0.05);
 }
@@ -215,9 +245,23 @@
   --ws-hl-bg: rgba(181, 137, 0, 0.22);
   --ws-chip-bg: #073642;
   --ws-link-dot: #268bd2;
+  /* barD/E/F stay within the official Solarized accent set (not invented
+     colours) per the handoff. barA/B/C already cover the cool half of the
+     wheel (blue 258°, cyan 189°, green 107° in CIELAB hue-angle terms); the
+     added three — orange, magenta, violet — fill the warm half that was
+     otherwise empty, leaving Solarized's `red` unused since it sits only
+     ~13° from orange (too close to read as distinct at this size). All six
+     Solarized accents share L*50-60 in the palette's own spec, so lightness
+     stays even without any extra tuning here.
+     CVD note: barC (green) vs barD (orange) is the weak red-green-style
+     pair here (green/orange collapse together under deuteranopia); barA
+     (blue) vs barF (violet) can also merge under the rarer tritanopia. */
   --ws-bar-a: #268bd2;
   --ws-bar-b: #2aa198;
   --ws-bar-c: #859900;
+  --ws-bar-d: #cb4b16;
+  --ws-bar-e: #d33682;
+  --ws-bar-f: #6c71c4;
   --ws-done-fg-row: rgba(195, 204, 200, 0.42);
   --ws-vac-bg: rgba(147, 161, 161, 0.1);
 }
@@ -249,9 +293,23 @@
   --ws-hl-bg: rgba(230, 190, 80, 0.16);
   --ws-chip-bg: #2a2621;
   --ws-link-dot: oklch(0.7 0.1 240);
+  /* barD/E/F reuse barA/barC's L .68 / C .09 (barB alone runs slightly
+     hotter at .70/.1) and fill the hue arc opposite green/blue/orange —
+     blue-violet, purple, rose — the mirror image of the gap Paper fills,
+     since Warm dark's existing barB already sits at 45° (orange) where
+     Paper's barB sits at 300° (purple). See tokens.css bare :root for the
+     full spacing rationale.
+     CVD note: barB (orange, 45°) and barF (rose, 350°) both read close to
+     barC (green, 140°) under deuteranopia/protanopia — orange/green and
+     red/green are the two classic confusion pairs, both present in this
+     ramp. barD (blue-violet) and barE (purple) stay distinct from green
+     under every common CVD type. */
   --ws-bar-a: oklch(0.68 0.09 210);
   --ws-bar-b: oklch(0.7 0.1 45);
   --ws-bar-c: oklch(0.68 0.08 140);
+  --ws-bar-d: oklch(0.68 0.09 260);
+  --ws-bar-e: oklch(0.68 0.09 305);
+  --ws-bar-f: oklch(0.68 0.09 350);
   --ws-done-fg-row: rgba(232, 226, 214, 0.42);
   --ws-vac-bg: rgba(255, 255, 255, 0.09);
 }

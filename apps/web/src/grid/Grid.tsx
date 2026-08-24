@@ -4,6 +4,7 @@ import type React from 'react'
 import type { IsoDate } from '@weekspan/weekspan-core'
 import { intentForMouse, type MouseIntent } from '../interaction/mouse.js'
 import { InlineEdit } from '../add/InlineEdit.js'
+import type { ProjectRow } from './projectView.js'
 
 export interface GridInteraction {
   /** Currently selected cell, or null. */
@@ -43,6 +44,13 @@ export interface GridInteraction {
   draftAfterId?: string | null
   /** Clicking the seam between two rows opens a draft there. */
   onInsertBetween?: (afterId: string | null, beforeId: string | null, parentId: string | null) => void
+  /**
+   * Project view: rows interleaved with group dividers. When set, these replace
+   * the flat row list. Same grid, same geometry — only the row sequence differs.
+   */
+  projectRows?: ProjectRow[] | null
+  onToggleGroup?: (projectId: string | null) => void
+  onPickColor?: (projectId: string, x: number, y: number) => void
 }
 import './Grid.css'
 
@@ -353,6 +361,51 @@ function Seam({
   )
 }
 
+/**
+ * A project group header. Spans the full grid width so the week columns stay
+ * uninterrupted behind it.
+ */
+function DividerRow({
+  divider,
+  interaction,
+}: {
+  divider: Extract<ProjectRow, { kind: 'divider' }>
+  interaction: GridInteraction
+}): JSX.Element {
+  return (
+    <div className="ws-divider">
+      <button
+        className="ws-divider-disclosure"
+        type="button"
+        aria-expanded={!divider.collapsed}
+        onClick={() => interaction.onToggleGroup?.(divider.projectId)}
+        title={divider.collapsed ? 'Expand' : 'Collapse'}
+      >
+        {divider.collapsed ? '▸' : '▾'}
+      </button>
+      {divider.projectId !== null ? (
+        <button
+          className="ws-divider-swatch"
+          type="button"
+          style={
+            divider.colorToken
+              ? { background: `var(--ws-${kebab(divider.colorToken)})` }
+              : undefined
+          }
+          title="Change colour"
+          onClick={(e) =>
+            interaction.onPickColor?.(divider.projectId as string, e.clientX, e.clientY)
+          }
+        />
+      ) : (
+        <span className="ws-divider-swatch ws-divider-swatch--none" />
+      )}
+      <span className="ws-divider-name">{divider.name}</span>
+      <span className="ws-divider-meta">{divider.meta}</span>
+    </div>
+  )
+}
+
 /** An unsaved new item, rendered as an ordinary row so it reads the same. */
 function DraftRow({
   interaction,
@@ -402,7 +455,21 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
         )),
       )}
 
-      {(interaction.previewRows ?? vm.rows).map((row, i, arr) => (
+      {interaction.projectRows
+        ? interaction.projectRows.map((pr, i) =>
+            pr.kind === 'divider' ? (
+              <DividerRow divider={pr} interaction={interaction} key={`d-${pr.projectId ?? 'none'}`} />
+            ) : (
+              <Row
+                row={pr.row}
+                interaction={interaction}
+                dragging={interaction.draggingId === pr.row.id}
+                key={pr.row.id}
+              />
+            ),
+          )
+        : null}
+      {interaction.projectRows ? null : (interaction.previewRows ?? vm.rows).map((row, i, arr) => (
         <Fragment key={row.id}>
           {i === 0 ? (
             <Seam
