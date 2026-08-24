@@ -21,6 +21,15 @@ export interface InsertOpts {
   /** Rank scope for the new item. `null`/omitted means a root item. */
   parentId?: string | null
   due?: IsoDate
+  /**
+   * Project to file the new item under.
+   *
+   * This was missing, and callers were spreading it in anyway — TypeScript's
+   * excess-property check does not apply through a spread, so it compiled and
+   * was silently dropped. Quick capture showed the project resolved in its
+   * preview and then created the item with none.
+   */
+  projectId?: string | null
 }
 
 export interface InsertResult {
@@ -98,6 +107,9 @@ export function insertItem(weekspan: Weekspan, opts: InsertOpts): InsertResult {
   const item: Item = { id, title, rank, marks: {} }
   if (parentId !== null) item.parentId = parentId
   if (opts.due !== undefined) item.marks = { [opts.due]: { kind: 'due' } }
+  // Validated by the caller or by `parse` on load; a dangling projectId is
+  // rejected by the strict parser, so it must reference a real project.
+  if (opts.projectId != null) item.projectId = opts.projectId
 
   return {
     weekspan: { ...weekspan, items: [...weekspan.items, item] },

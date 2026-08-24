@@ -206,3 +206,25 @@ describe('updateTitle', () => {
     expect(() => updateTitle(w, 'missing', 'new title')).toThrow()
   })
 })
+
+describe('projectId', () => {
+  const withProject = (): Weekspan =>
+    createWeekspan({
+      projects: [{ id: 'work', name: 'Work', colorToken: 'barA' }],
+      items: weekspanWith(['existing']).items,
+    })
+
+  it('files the new item under the given project', () => {
+    // Regression: InsertOpts had no projectId, but callers spread one in.
+    // TypeScript's excess-property check does not apply through a spread, so it
+    // compiled and was silently discarded — quick capture showed the project
+    // resolved in its preview and then created the item with none.
+    const { weekspan, id } = insertItem(withProject(), { title: 'filed', projectId: 'work' })
+    expect(weekspan.items.find((i) => i.id === id)!.projectId).toBe('work')
+  })
+
+  it('omits the field entirely when no project is given', () => {
+    const { weekspan, id } = insertItem(withProject(), { title: 'unfiled' })
+    expect(weekspan.items.find((i) => i.id === id)!.projectId).toBeUndefined()
+  })
+})
