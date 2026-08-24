@@ -13,9 +13,26 @@ import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
+import { build } from 'vite'
+import react from '@vitejs/plugin-react'
+
+/*
+ * Build the harness here rather than adding a second entry to vite.config.ts —
+ * a second entry breaks `npm run build:single`, which needs inlineDynamicImports.
+ */
+await build({
+  root: process.cwd(),
+  plugins: [react()],
+  build: {
+    outDir: 'dist-ramp',
+    emptyOutDir: true,
+    rollupOptions: { input: 'ramp-probe.html' },
+  },
+  logLevel: 'error',
+})
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const DIST = path.join(ROOT, 'dist')
+const DIST = path.join(ROOT, 'dist-ramp')
 const OUT = path.join(ROOT, 'shots')
 
 const MIME = {
