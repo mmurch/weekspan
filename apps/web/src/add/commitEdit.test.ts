@@ -1,0 +1,107 @@
+import { orderItems } from '@weekspan/weekspan-core'
+import { buildGrid } from '../grid/viewModel.js'
+import { demoWeekspan } from '../grid/fixtures.js'
+import { commitEdit } from './commitEdit.js'
+
+const TODAY = '2026-08-26'
+const base = demoWeekspan(TODAY)
+const rows = buildGrid(base, TODAY).rows
+
+describe('editing an existing title', () => {
+  it('changes the title', () => {
+    const id = rows[0]!.id
+    const next = commitEdit(base, { kind: 'existing', itemId: id }, 'a new title')
+    expect(next).not.toBeNull()
+    expect(next!.items.find((i) => i.id === id)!.title).toBe('a new title')
+  })
+
+  it('writes nothing when the title is unchanged', () => {
+    const item = base.items[0]!
+    expect(commitEdit(base, { kind: 'existing', itemId: item.id }, item.title)).toBeNull()
+  })
+
+  it('trims before comparing, so whitespace alone is not a change', () => {
+    const item = base.items[0]!
+    expect(commitEdit(base, { kind: 'existing', itemId: item.id }, `  ${item.title}  `)).toBeNull()
+  })
+
+  it('cancels on a blank title rather than deleting the item', () => {
+    // Backspacing a selected title to empty must not be a destructive act.
+    const id = rows[0]!.id
+    expect(commitEdit(base, { kind: 'existing', itemId: id }, '   ')).toBeNull()
+    expect(base.items.find((i) => i.id === id)).toBeDefined()
+  })
+})
+
+describe('creating a new item in a gap', () => {
+  function roots(w = base) {
+    return orderItems(w.items).filter((i) => i.parentId == null)
+  }
+
+  it('lands between its two neighbours', () => {
+    const [a, b] = roots()
+    const next = commitEdit(
+      base,
+      { kind: 'new', afterId: a!.id, beforeId: b!.id, parentId: null },
+      'inserted',
+    )
+    expect(next).not.toBeNull()
+    const order = orderItems(next!.items).map((i) => i.title)
+    expect(order.indexOf('inserted')).toBe(order.indexOf(a!.title) + 1)
+  })
+
+  it('moves no other item — the new rank sits between, nothing else shifts', () => {
+    const [a, b] = roots()
+    const next = commitEdit(
+      base,
+      { kind: 'new', afterId: a!.id, beforeId: b!.id, parentId: null },
+      'inserted',
+    )!
+    for (const before of base.items) {
+      expect(next.items.find((i) => i.id === before.id)!.rank).toBe(before.rank)
+    }
+  })
+
+  it('works at the very top and the very bottom', () => {
+    const all = roots()
+    const top = commitEdit(
+      base,
+      { kind: 'new', afterId: null, beforeId: all[0]!.id, parentId: null },
+      'first',
+    )!
+    expect(orderItems(top.items)[0]!.title).toBe('first')
+
+    const bottom = commitEdit(
+      base,
+      { kind: 'new', afterId: all[all.length - 1]!.id, beforeId: null, parentId: null },
+      'last',
+    )!
+    const ordered = orderItems(bottom.items)
+    expect(ordered[ordered.length - 1]!.title).toBe('last')
+  })
+
+  it('creates a child when the gap belongs to a child scope', () => {
+    const parent = base.items.find((p) => base.items.some((c) => c.parentId === p.id))!
+    const child = base.items.find((c) => c.parentId === parent.id)!
+    const next = commitEdit(
+      base,
+      { kind: 'new', afterId: child.id, beforeId: null, parentId: parent.id },
+      'sibling of child',
+    )!
+    expect(next.items.find((i) => i.title === 'sibling of child')!.parentId).toBe(parent.id)
+  })
+
+  it('discards a blank draft silently', () => {
+    expect(
+      commitEdit(base, { kind: 'new', afterId: null, beforeId: null, parentId: null }, '   '),
+    ).toBeNull()
+  })
+
+  it('returns null rather than throwing when insertItem rejects the anchor', () => {
+    // A cross-scope anchor makes insertItem throw; it must not escape into a render.
+    const child = base.items.find((c) => c.parentId != null)!
+    expect(() =>
+      commitEdit(base, { kind: 'new', afterId: child.id, beforeId: null, parentId: null }, 'x'),
+    ).not.toThrow()
+  })
+})

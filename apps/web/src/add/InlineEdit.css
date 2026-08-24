@@ -1,0 +1,27 @@
+/*
+ * Must render pixel-identical to `.ws-title-text`, or clicking a title visibly
+ * jolts the row — and because cells align across the table, that jolt is not
+ * local to one row.
+ */
+.ws-inline-edit {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: var(--ws-ink);
+  font: 400 12.5px/1.4 'IBM Plex Sans', sans-serif;
+  overflow-wrap: anywhere;
+  display: block;
+}
+
+.ws-inline-edit::placeholder { color: var(--ws-ink-4); }
+
+/* The draft row's own subtle frame, so an empty one is visible before you type. */
+.ws-title--draft {
+  box-shadow: inset 0 0 0 2px var(--ws-sel-ring);
+  border-radius: var(--ws-radius-2);
+}

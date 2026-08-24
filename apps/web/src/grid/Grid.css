@@ -435,3 +435,74 @@ button.ws-week-close--blocked {
 /* touch-action:none stops a touch drag from being stolen by page scroll. */
 .ws-grip { touch-action: none; }
 .ws-grip:active { cursor: grabbing; }
+
+/*
+ * The lifted row while dragging. Rows are `display: contents`, so the row itself
+ * cannot be transformed — the styling has to go on its cells.
+ */
+.ws-row--dragging > * {
+  background: var(--ws-sel-bg);
+  opacity: 0.92;
+}
+.ws-row--dragging > .ws-title { box-shadow: 0 1px 0 var(--ws-sel-ring), 0 -1px 0 var(--ws-sel-ring); }
+.ws-grid { cursor: default; }
+
+/*
+ * The insert seam.
+ *
+ * Spans the full grid width but occupies ZERO height — it is pulled out of flow
+ * with a negative margin and overlaid on the row boundary. A seam that took real
+ * height would make every row gap grow, and the grid would twitch as the pointer
+ * crossed each boundary.
+ */
+.ws-seam {
+  grid-column: 1 / -1;
+  position: relative;
+  /* A real 8px hit target, cancelled by equal negative margins so it adds no
+     net height. Relying on a zero-height box with a pseudo-element hit area
+     made it effectively unclickable. */
+  height: 8px;
+  margin-top: -4px;
+  margin-bottom: -4px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.ws-seam-line,
+.ws-seam-plus {
+  opacity: 0;
+  transition: opacity 90ms ease;
+}
+
+.ws-seam:hover .ws-seam-line,
+.ws-seam:hover .ws-seam-plus {
+  opacity: 1;
+}
+
+.ws-seam-line {
+  position: absolute;
+  left: 24px;
+  right: 0;
+  height: 1px;
+  background: var(--ws-sel-ring);
+}
+
+.ws-seam-plus {
+  position: absolute;
+  left: 6px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--ws-sel-ring);
+  color: var(--ws-panel);
+  display: grid;
+  place-items: center;
+  font: 600 11px/1 'IBM Plex Sans', sans-serif;
+}
+
+.ws-row--draft > * { background: var(--ws-sel-bg); }
+
+/* Titles invite editing without shouting about it. */
+.ws-title-text { cursor: text; }

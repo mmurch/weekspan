@@ -15,10 +15,10 @@ import { serialize } from '@weekspan/weekspan-core'
 import { resolveKey, applyAction } from './interaction/keymap.js'
 import { reconcileSelection, selectionFromCell, type Selection } from './interaction/selection.js'
 import { CellMenu } from './interaction/CellMenu.js'
-import { useDragReorder } from './interaction/useDragReorder.js'
-import { DragIndicator } from './interaction/DragIndicator.js'
+import { useDragPreview } from './interaction/useDragPreview.js'
 import { QuickCapture } from './add/QuickCapture.js'
 import { insertItem } from './add/draft.js'
+import { commitEdit, type EditTarget } from './add/commitEdit.js'
 import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
 import { closeOutState, performClose } from './closeout/closeoutActions.js'
 import { CloseOutPanel } from './closeout/CloseOutPanel.js'
@@ -84,6 +84,8 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
   const [menu, setMenu] = useState<{ x: number; y: number; sel: Selection } | null>(null)
   const [captureOpen, setCaptureOpen] = useState(false)
   const [closeOutOpen, setCloseOutOpen] = useState(false)
+  /** Which title is being edited in place, or which gap holds a new draft. */
+  const [editing, setEditing] = useState<EditTarget | null>(null)
 
   /**
    * Zoom is applied to the document root, never to an inner element.
@@ -137,7 +139,7 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
     [mutate],
   )
 
-  const { state: dragState, gripHandlers } = useDragReorder(vm, handleReorder)
+  const { state: dragState, gripHandlers } = useDragPreview(vm, handleReorder)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
@@ -211,23 +213,39 @@ function Workspace({ store, today }: { store: FileStore; today: string }): JSX.E
           <Grid
             vm={vm}
             selection={selection}
-            onSelectCell={(itemId, date) => {
-              // Click both selects AND advances the cell, per the request that a
-              // click cycle blank -> due -> done -> blank (plus skip when the item
-              // recurs). Routed through the same `cycle` action Enter uses, so the
-              // two can never diverge — including the vacation-day refusal.
+            onCellMouse={(itemId, date, intent, x, y) => {
+              // Left = due, right = done, middle = clear, double = menu. Every
+              // path still goes through `applyAction`, so the vacation-day
+              // refusal applies to all of them without being restated here.
               const sel = selectionFromCell(itemId, date)
               setSelection(sel)
-              const result = applyAction({ kind: 'cycle' }, sel, weekspan, today)
+              if (intent.kind === 'menu') {
+                setMenu({ x, y, sel })
+                return
+              }
+              const result = applyAction({ kind: intent.kind }, sel, weekspan, today)
               if (result.weekspan) void mutate(() => result.weekspan)
             }}
-            onContextCell={(itemId, date, x, y) =>
-              setMenu({ x, y, sel: selectionFromCell(itemId, date) })
-            }
             onCloseOut={() => setCloseOutOpen(true)}
             gripHandlers={gripHandlers}
+            previewRows={dragState.draggingId ? dragState.rows : null}
+            draggingId={dragState.draggingId}
+            editingId={editing?.kind === 'existing' ? editing.itemId : null}
+            draftAfterId={editing?.kind === 'new' ? editing.afterId : null}
+            onStartEdit={(itemId) => setEditing({ kind: 'existing', itemId })}
+            onInsertBetween={(afterId, beforeId, parentId) =>
+              setEditing({ kind: 'new', afterId, beforeId, parentId })
+            }
+            onCancelEdit={() => setEditing(null)}
+            onCommitEdit={(title) => {
+              const target = editing
+              setEditing(null)
+              if (!target) return
+              // commitEdit returns null for an unchanged title or an abandoned
+              // draft, and `mutate` treats null as "write nothing".
+              void mutate((w) => commitEdit(w, target, title))
+            }}
           />
-          <DragIndicator vm={vm} state={dragState} />
         </div>
         <ShortcutBar count={vm.rows.length} />
       </div>

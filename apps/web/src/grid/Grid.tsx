@@ -1,16 +1,48 @@
 import type { CellVM, DayColumn, GridVM, RowVM, WeekBlock } from './viewModel.js'
+import { Fragment } from 'react'
 import type React from 'react'
 import type { IsoDate } from '@weekspan/weekspan-core'
+import { intentForMouse, type MouseIntent } from '../interaction/mouse.js'
+import { InlineEdit } from '../add/InlineEdit.js'
 
 export interface GridInteraction {
   /** Currently selected cell, or null. */
   selection?: { itemId: string; date: IsoDate } | null
-  onSelectCell?: (itemId: string, date: IsoDate) => void
-  onContextCell?: (itemId: string, date: IsoDate, x: number, y: number) => void
+  /**
+   * One callback for every mouse path. Left = due, right = done, middle = clear,
+   * double = menu; `intentForMouse` decides which.
+   */
+  onCellMouse?: (
+    itemId: string,
+    date: IsoDate,
+    intent: MouseIntent,
+    x: number,
+    y: number,
+  ) => void
   /** Fired by the week close affordance. */
   onCloseOut?: (week: string) => void
-  /** Pointer handlers for the drag grip, from `useDragReorder`. */
+  /** Pointer handlers for the drag grip, from `useDragPreview`. */
   gripHandlers?: (itemId: string) => { onPointerDown: (e: React.PointerEvent) => void }
+  /**
+   * Rows in prospective order while a drag is in progress. When set, these are
+   * rendered instead of `vm.rows` — so the row visibly occupies its new position
+   * as the pointer moves, rather than a separate line hinting at it.
+   */
+  previewRows?: RowVM[] | null
+  /** Id of the row being dragged, for the lifted styling. */
+  draggingId?: string | null
+  /** Id of the row whose title is being edited in place, if any. */
+  editingId?: string | null
+  onStartEdit?: (itemId: string) => void
+  onCommitEdit?: (title: string) => void
+  onCancelEdit?: () => void
+  /**
+   * A draft row sits in the gap identified by these neighbours. Rendered as an
+   * ordinary row so typing a new item feels exactly like editing an existing one.
+   */
+  draftAfterId?: string | null
+  /** Clicking the seam between two rows opens a draft there. */
+  onInsertBetween?: (afterId: string | null, beforeId: string | null, parentId: string | null) => void
 }
 import './Grid.css'
 
@@ -118,14 +150,18 @@ function Cell({
   cell,
   itemId,
   selected,
-  onSelect,
-  onContext,
+  onCellMouse,
 }: {
   cell: CellVM
   itemId: string
   selected: boolean
-  onSelect?: (itemId: string, date: IsoDate) => void
-  onContext?: (itemId: string, date: IsoDate, x: number, y: number) => void
+  onCellMouse?: (
+    itemId: string,
+    date: IsoDate,
+    intent: MouseIntent,
+    x: number,
+    y: number,
+  ) => void
 }): JSX.Element {
   const cls = [
     'ws-cell',
@@ -141,14 +177,34 @@ function Cell({
   // data-cell-date is what the screenshot harness measures to prove that every
   // cell sharing a date also shares an x-position, even across wrapping rows.
   return (
+    /*
+     * Three separate events, deliberately: native `click` only ever fires for the
+     * LEFT button. Right click fires `contextmenu` and never `click`; middle
+     * click fires `auxclick` and never `click`. One handler cannot cover them.
+     *
+     * The `mousedown` preventDefault is specifically for middle click — Chrome
+     * arms its autoscroll widget at mousedown, so suppressing it at click time is
+     * already too late.
+     */
     <div
       className={cls}
       data-cell-date={cell.date}
-      onClick={() => onSelect?.(itemId, cell.date)}
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
+      onClick={(e) => {
+        const intent = intentForMouse(e.button, e.detail)
+        if (intent) onCellMouse?.(itemId, cell.date, intent, e.clientX, e.clientY)
+      }}
       onContextMenu={(e) => {
-        if (!onContext) return
         e.preventDefault()
-        onContext(itemId, cell.date, e.clientX, e.clientY)
+        const intent = intentForMouse(2, e.detail)
+        if (intent) onCellMouse?.(itemId, cell.date, intent, e.clientX, e.clientY)
+      }}
+      onAuxClick={(e) => {
+        if (e.button !== 1) return
+        const intent = intentForMouse(1, e.detail)
+        if (intent) onCellMouse?.(itemId, cell.date, intent, e.clientX, e.clientY)
       }}
     >
       <Chip cell={cell} />
@@ -156,7 +212,15 @@ function Cell({
   )
 }
 
-function Row({ row, interaction }: { row: RowVM; interaction: GridInteraction }): JSX.Element {
+function Row({
+  row,
+  interaction,
+  dragging,
+}: {
+  row: RowVM
+  interaction: GridInteraction
+  dragging: boolean
+}): JSX.Element {
   const titleCls = [
     'ws-title',
     row.state === 'finished' ? 'ws-title--finished' : '',
@@ -178,7 +242,7 @@ function Row({ row, interaction }: { row: RowVM; interaction: GridInteraction })
     : undefined
 
   return (
-    <div className="ws-row" data-row-id={row.id}>
+    <div className={`ws-row${dragging ? ' ws-row--dragging' : ''}`} data-row-id={row.id}>
       <div
         className="ws-grip"
         {...(interaction.gripHandlers ? interaction.gripHandlers(row.id) : {})}
@@ -188,7 +252,21 @@ function Row({ row, interaction }: { row: RowVM; interaction: GridInteraction })
       <div className="ws-bar" style={barStyle} />
       <div className={titleCls}>
         {row.depth === 1 ? <span className="ws-elbow" /> : null}
-        <span className={textCls}>{row.title}</span>
+        {interaction.editingId === row.id ? (
+          <InlineEdit
+            initial={row.title}
+            onCommit={(t) => interaction.onCommitEdit?.(t)}
+            onCancel={() => interaction.onCancelEdit?.()}
+          />
+        ) : (
+          <span
+            className={textCls}
+            onClick={() => interaction.onStartEdit?.(row.id)}
+            title="Click to edit"
+          >
+            {row.title}
+          </span>
+        )}
         {row.notes ? (
           <span className="ws-notes">
             {row.notes
@@ -221,11 +299,79 @@ function Row({ row, interaction }: { row: RowVM; interaction: GridInteraction })
           selected={
             interaction.selection?.itemId === row.id && interaction.selection?.date === cell.date
           }
-          {...(interaction.onSelectCell ? { onSelect: interaction.onSelectCell } : {})}
-          {...(interaction.onContextCell ? { onContext: interaction.onContextCell } : {})}
+          {...(interaction.onCellMouse ? { onCellMouse: interaction.onCellMouse } : {})}
           key={cell.date}
         />
       ))}
+    </div>
+  )
+}
+
+/**
+ * Which sibling scope the gap AFTER row `i` belongs to.
+ *
+ * A gap between two children belongs to their parent; a gap between roots, or
+ * after the last child of a group, belongs to the root scope. Getting this wrong
+ * puts a new item in an arbitrary position, because ranks only compare within a
+ * scope.
+ */
+function seamParentId(rows: readonly RowVM[], i: number): string | null {
+  const next = rows[i + 1]
+  // The gap is inside a child group only if the row after it is itself a child.
+  if (!next || next.depth === 0) return null
+  for (let j = i; j >= 0; j--) {
+    if (rows[j]!.depth === 0) return rows[j]!.id
+  }
+  return null
+}
+
+/**
+ * The hover seam between two rows. An overlay, never a layout change — the gap
+ * must not resize on hover or the whole grid twitches as the pointer moves.
+ */
+function Seam({
+  afterId,
+  beforeId,
+  parentId,
+  interaction,
+}: {
+  afterId: string | null
+  beforeId: string | null
+  parentId: string | null
+  interaction: GridInteraction
+}): JSX.Element | null {
+  if (!interaction.onInsertBetween) return null
+  return (
+    <div
+      className="ws-seam"
+      onClick={() => interaction.onInsertBetween?.(afterId, beforeId, parentId)}
+      title="Insert an item here"
+    >
+      <span className="ws-seam-plus">+</span>
+      <span className="ws-seam-line" />
+    </div>
+  )
+}
+
+/** An unsaved new item, rendered as an ordinary row so it reads the same. */
+function DraftRow({
+  interaction,
+  depth,
+}: {
+  interaction: GridInteraction
+  depth: 0 | 1
+}): JSX.Element {
+  return (
+    <div className="ws-row ws-row--draft">
+      <div className="ws-grip" />
+      <div className="ws-bar" />
+      <div className={`ws-title ws-title--draft${depth === 1 ? ' ws-title--child' : ''}`}>
+        <InlineEdit
+          initial=""
+          onCommit={(t) => interaction.onCommitEdit?.(t)}
+          onCancel={() => interaction.onCancelEdit?.()}
+        />
+      </div>
     </div>
   )
 }
@@ -256,8 +402,34 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
         )),
       )}
 
-      {vm.rows.map((row) => (
-        <Row row={row} interaction={interaction} key={row.id} />
+      {(interaction.previewRows ?? vm.rows).map((row, i, arr) => (
+        <Fragment key={row.id}>
+          {i === 0 ? (
+            <Seam
+              afterId={null}
+              beforeId={row.id}
+              parentId={null}
+              interaction={interaction}
+            />
+          ) : null}
+          <Row
+            row={row}
+            interaction={interaction}
+            dragging={interaction.draggingId === row.id}
+          />
+          {interaction.draftAfterId === row.id ? (
+            <DraftRow interaction={interaction} depth={row.depth} />
+          ) : null}
+          <Seam
+            afterId={row.id}
+            beforeId={arr[i + 1]?.id ?? null}
+            // Ranks are sibling-scoped, so a new item must join the scope the gap
+            // actually sits in. RowVM carries `depth`, not a parent id, so the
+            // parent is the nearest preceding root.
+            parentId={seamParentId(arr, i)}
+            interaction={interaction}
+          />
+        </Fragment>
       ))}
 
       <div className="ws-addrow">
