@@ -30,7 +30,7 @@ body {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
 }
 
 img,
@@ -57,7 +57,7 @@ textarea {
 /* ---- app shell ------------------------------------------------------- */
 
 .ws-app {
-  min-height: 100vh;
+  height: 100%;
   background: var(--ws-surface);
   display: flex;
   flex-direction: column;
@@ -127,7 +127,7 @@ textarea {
 
 /* ---- icon rail ------------------------------------------------------- */
 
-.ws-shell { display: flex; min-height: 100vh; }
+.ws-shell { display: flex; height: 100%; }
 
 .ws-rail {
   width: var(--ws-rail);
@@ -174,9 +174,25 @@ textarea {
 
 /* ---- layout: header frozen vertically, footer pinned to viewport ------ */
 
-.ws-shell { height: 100vh; overflow: hidden; }
+/*
+ * Percentage height, NOT 100vh.
+ *
+ * The root carries a CSS `zoom`, and `100vh` resolves to the viewport height in
+ * CSS pixels which zoom THEN scales — so at 110% the shell rendered 990px tall
+ * in a 900px window and the document grew its own scrollbar alongside the grid's.
+ * `height: 100%` chains from html, whose box already accounts for the zoom.
+ */
+html,
+body {
+  height: 100%;
+  /* The grid owns scrolling. The document must never scroll, or every axis gets
+     two scrollbars. */
+  overflow: hidden;
+}
 
-.ws-main { height: 100vh; min-height: 0; }
+.ws-shell { height: 100%; overflow: hidden; }
+
+.ws-main { height: 100%; min-height: 0; }
 
 /* The single scroll surface. Sticky header cells and the frozen item column
    position against THIS box, so it must own both axes. */
@@ -218,7 +234,7 @@ textarea {
   gap: 8px;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 100%;
   background: var(--ws-surface);
   color: var(--ws-ink-2);
   font: 400 13px/1.5 'IBM Plex Sans', sans-serif;

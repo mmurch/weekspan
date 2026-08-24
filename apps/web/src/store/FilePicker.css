@@ -11,7 +11,9 @@
  */
 
 .ws-filepicker-panel {
-  min-height: 100vh;
+  /* Percentage, not 100vh — the root carries a zoom, and 100vh would scale past
+     the window and give the document its own scrollbar. */
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
