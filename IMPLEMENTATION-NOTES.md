@@ -832,3 +832,42 @@ when already ordered, so a second press writes nothing.
 
 *Flagged:* unlike a drag, this rewrites every rank in a scope it reorders. Inherent to sorting,
 and the reason it is an explicit button rather than anything automatic.
+
+## The "No project" bucket can be coloured
+
+Its swatch was inert — `DividerRow` rendered a `<span>` for the null bucket and a `<button>` for
+everything else, and `onPickColor` was typed `(projectId: string, …)`, so null had nowhere to go.
+
+**Where the colour lives, and why it is not in the file.** Every real project carries
+`colorToken` in the ledger. The unassigned bucket is the ABSENCE of a project, so there is no
+`Project` record to hang a colour on and the only place a top-level colour could live is a new
+field on `Weekspan`. That was rejected: `parse` calls `rejectUnknownKeys`, so a file carrying a
+field an older client does not know about is REFUSED, not ignored. Adding one therefore means
+bumping `SCHEMA_VERSION` — and `MIGRATIONS.md` is explicit that no migration tooling exists and
+that a bump locks every older copy of the app out of the file. Since the app is distributed by
+copying an HTML file between machines, older copies genuinely exist. Too steep a price for a
+colour.
+
+So it lives per-device in `localStorage`, beside the theme and the zoom level — the two other
+display preferences the file deliberately does not carry. **Stated consequence: the choice does
+not travel with the ledger.** If it should, that needs a schema version and a migration chain,
+which is a different piece of work.
+
+`loadNoProjectColor` validates against the live `PROJECT_COLOR_TOKENS` rather than trusting
+storage: an unknown token would resolve to a CSS custom property that does not exist and paint
+the bar transparent with no clue why. That also happens to close a CSS-injection route through
+a hand-edited storage value.
+
+The picker gained `allowNone`, because colourless is this bucket's default and the user has to
+be able to get back to it. A real project always has a colour, so the option is absent there
+rather than silently doing nothing.
+
+### The picker was never positioned — pre-existing
+
+Found while testing the above, and it affected real projects equally. `App` captured the click's
+`x`/`y` into `colorPicker` state and then never passed them on; `.ws-colorpicker` had no
+`position`, so the "small popover" laid out in normal document flow at the end of the shell,
+`position: static` and stretched to the full viewport height, nowhere near the swatch that
+opened it. Now `position: fixed` with the click coordinates, matching `CellMenu`, plus a clamp
+so it cannot run off the right edge. Its width is computed from the swatch count rather than
+measured — measuring would need a layout pass the first paint does not have.

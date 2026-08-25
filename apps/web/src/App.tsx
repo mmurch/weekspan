@@ -43,6 +43,7 @@ import { commitProjectCapture } from './add/projectCapture.js'
 import { buildProjectView, type ProjectRow } from './grid/projectView.js'
 import { applyProjectDrop, dropFromRows } from './interaction/projectDrag.js'
 import { ProjectColorPicker } from './projects/ProjectColorPicker.js'
+import { loadNoProjectColor, saveNoProjectColor } from './projects/noProjectColor.js'
 import { setProjectColor } from '@weekspan/weekspan-core'
 import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
 import { closeOutState, performClose } from './closeout/closeoutActions.js'
@@ -132,7 +133,11 @@ function Workspace({
   const [editing, setEditing] = useState<EditTarget | null>(null)
   const [view, setView] = useState<'priority' | 'project'>('priority')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string | null>>(new Set())
-  const [colorPicker, setColorPicker] = useState<{ projectId: string; x: number; y: number } | null>(
+  // Colour of the unassigned bucket. Per-device, NOT in the ledger — see
+  // `projects/noProjectColor.ts` for why the file deliberately does not carry it.
+  const [noProjectColor, setNoProjectColor] = useState<string | null>(() => loadNoProjectColor())
+
+  const [colorPicker, setColorPicker] = useState<{ projectId: string | null; x: number; y: number } | null>(
     null,
   )
   const [filterText, setFilterText] = useState('')
@@ -166,8 +171,8 @@ function Workspace({
   }, [zoom])
 
   const vm = useMemo(
-    () => (weekspan ? buildGrid(weekspan, today, fillWeeks) : null),
-    [weekspan, today, fillWeeks],
+    () => (weekspan ? buildGrid(weekspan, today, fillWeeks, noProjectColor) : null),
+    [weekspan, today, fillWeeks, noProjectColor],
   )
 
   const projectNameById = useMemo(
@@ -199,9 +204,13 @@ function Workspace({
   const projectVm = useMemo(
     () =>
       weekspan && view === 'project'
-        ? buildProjectView(weekspan, today, { minWeeks: fillWeeks, collapsed })
+        ? buildProjectView(weekspan, today, {
+            minWeeks: fillWeeks,
+            collapsed,
+            noProjectColorToken: noProjectColor,
+          })
         : null,
-    [weekspan, today, fillWeeks, view, collapsed],
+    [weekspan, today, fillWeeks, view, collapsed, noProjectColor],
   )
 
   // A selection pointing at an item that no longer exists is worse than none —
@@ -521,13 +530,24 @@ function Workspace({
       {colorPicker ? (
         <ProjectColorPicker
           value={
-            weekspan.projects.find((p) => p.id === colorPicker.projectId)?.colorToken ?? 'barA'
+            colorPicker.projectId === null
+              ? noProjectColor
+              : (weekspan.projects.find((p) => p.id === colorPicker.projectId)?.colorToken ?? 'barA')
           }
+          allowNone={colorPicker.projectId === null}
           onChange={(token) => {
-            void mutate((w) => setProjectColor(w, colorPicker.projectId, token))
+            if (colorPicker.projectId === null) {
+              // Local preference, so this is a setState + localStorage write and
+              // never touches the file — no diff, nothing to merge.
+              saveNoProjectColor(token)
+              setNoProjectColor(token)
+            } else if (token !== null) {
+              void mutate((w) => setProjectColor(w, colorPicker.projectId as string, token))
+            }
             setColorPicker(null)
           }}
           onClose={() => setColorPicker(null)}
+          position={{ x: colorPicker.x, y: colorPicker.y }}
         />
       ) : null}
 

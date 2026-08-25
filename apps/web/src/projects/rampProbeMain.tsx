@@ -169,7 +169,7 @@ function RampProbe(): JSX.Element {
         {pickerOpen ? (
           <ProjectColorPicker
             value={pickerValue}
-            onChange={(t) => setPickerValue(t)}
+            onChange={(t) => setPickerValue(t ?? 'barA')}
             onClose={() => setPickerOpen(false)}
           />
         ) : (

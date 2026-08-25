@@ -238,11 +238,17 @@ function buildRow(
   weekspan: Weekspan,
   pastByWeek: Map<IsoWeek, boolean>,
   projectColorById: Map<string, string>,
+  noProjectColorToken: string | null,
 ): RowVM {
   const state = displayState(item, today)
 
+  // An unassigned item takes the "No project" bucket's colour, which is a
+  // per-device preference rather than a field in the file (see
+  // `projects/noProjectColor.ts` for why). Null keeps the historical bare row.
   const projectColorToken =
-    item.projectId != null ? (projectColorById.get(item.projectId) ?? null) : null
+    item.projectId != null
+      ? (projectColorById.get(item.projectId) ?? null)
+      : (noProjectColorToken ?? null)
 
   const row: RowVM = {
     id: item.id,
@@ -302,7 +308,13 @@ function computeWindowExtended(
   return { ...base, weeks, to: weeks[weeks.length - 1]!.week }
 }
 
-export function buildGrid(weekspan: Weekspan, today: IsoDate, minWeeks = 0): GridVM {
+export function buildGrid(
+  weekspan: Weekspan,
+  today: IsoDate,
+  minWeeks = 0,
+  /** Colour for items with no project. Per-device; see `projects/noProjectColor.ts`. */
+  noProjectColorToken: string | null = null,
+): GridVM {
   const base = computeWindow(weekspan, today)
   const window =
     minWeeks > base.weeks.length
@@ -323,7 +335,7 @@ export function buildGrid(weekspan: Weekspan, today: IsoDate, minWeeks = 0): Gri
   )
   const ordered = orderItems(weekspan.items)
   const rows: RowVM[] = ordered.map((item) =>
-    buildRow(item, dates, today, weekspan, pastByWeek, projectColorById),
+    buildRow(item, dates, today, weekspan, pastByWeek, projectColorById, noProjectColorToken),
   )
 
   return {

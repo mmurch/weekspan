@@ -66,7 +66,12 @@ export interface GridInteraction {
    */
   projectRows?: ProjectRow[] | null
   onToggleGroup?: (projectId: string | null) => void
-  onPickColor?: (projectId: string, x: number, y: number) => void
+  /**
+   * Open the colour picker for a group. `null` is the unassigned bucket, which
+   * can be coloured too — its colour is a per-device preference rather than a
+   * field in the ledger (see `projects/noProjectColor.ts`).
+   */
+  onPickColor?: (projectId: string | null, x: number, y: number) => void
   /** Clicking a date header toggles vacation for that day. */
   onToggleVacation?: (date: IsoDate) => void
   /** Notes editing, mirroring title editing. */
@@ -454,23 +459,18 @@ function DividerRow({
       >
         {divider.collapsed ? '▸' : '▾'}
       </button>
-      {divider.projectId !== null ? (
-        <button
-          className="ws-divider-swatch"
-          type="button"
-          style={
-            divider.colorToken
-              ? { background: `var(--ws-${kebab(divider.colorToken)})` }
-              : undefined
-          }
-          title="Change colour"
-          onClick={(e) =>
-            interaction.onPickColor?.(divider.projectId as string, e.clientX, e.clientY)
-          }
-        />
-      ) : (
-        <span className="ws-divider-swatch ws-divider-swatch--none" />
-      )}
+      {/* The unassigned bucket gets the same affordance as a real project.
+          Its colour just lives per-device rather than in the file. */}
+      <button
+        className={`ws-divider-swatch${divider.colorToken ? '' : ' ws-divider-swatch--none'}`}
+        type="button"
+        style={
+          divider.colorToken ? { background: `var(--ws-${kebab(divider.colorToken)})` } : undefined
+        }
+        title="Change colour"
+        aria-label={`Change colour for ${divider.name}`}
+        onClick={(e) => interaction.onPickColor?.(divider.projectId, e.clientX, e.clientY)}
+      />
       <span className="ws-divider-name">{divider.name}</span>
       <span className="ws-divider-meta">{divider.meta}</span>
     </div>

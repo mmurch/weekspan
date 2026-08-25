@@ -610,11 +610,14 @@ button.ws-week-close--blocked {
   flex: none;
 }
 
-/* The unassigned bucket has no colour to pick, so its swatch is inert. */
+/*
+ * Colourless is now a CHOICE, not a constraint — the unassigned bucket opens
+ * the same picker a project does. The dashed outline says "no colour set"
+ * rather than "not available", so the cursor stays a pointer.
+ */
 .ws-divider-swatch--none {
   border: 1px dashed var(--ws-ink-4);
   background: transparent;
-  cursor: default;
 }
 
 .ws-divider-name {
