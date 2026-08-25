@@ -8,3 +8,4 @@ dist/
 *.ledger.json
 dist-single/
 dist-ramp/
+dist-release/

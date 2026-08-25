@@ -96,7 +96,7 @@ export {
   validateRecurrence,
 } from './recurrence.js'
 
-export type { DisplayState, RowStyle } from './derived.js'
+export type { DisplayState, RowStyle, VacationDays } from './derived.js'
 export {
   displayState,
   effectiveMark,

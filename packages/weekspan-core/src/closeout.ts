@@ -46,6 +46,12 @@ export interface CloseableResult {
  * Both use the WEEK's full seven days (`allWeekDates`), not just the
  * weekday columns the grid renders — a due or a recurring occurrence on a
  * weekend still has to be resolved before the week can close.
+ *
+ * Vacation days drop out of `generatedOccurrences` (via
+ * `isGeneratedOccurrence`) but NOT out of `explicitDues`. A rule that fires
+ * on a day the user was away never became work, so it must not block the
+ * close or earn an auto-skip; a due the user placed by hand IS work they
+ * planned, and marking the day vacation afterwards doesn't retract it.
  */
 export function unresolvedInWeek(
   weekspan: Weekspan,
@@ -69,7 +75,7 @@ export function unresolvedInWeek(
     if (item.recurrence) {
       const occurrences = occurrencesIn(item.recurrence, from, to)
       for (const date of occurrences) {
-        if (isGeneratedOccurrence(item, date)) {
+        if (isGeneratedOccurrence(item, date, weekspan.vacationDays)) {
           generatedOccurrences.push({
             itemId: item.id,
             date,

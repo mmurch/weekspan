@@ -9,7 +9,19 @@ import { insertItem, updateTitle } from './draft.js'
 
 export type EditTarget =
   | { kind: 'existing'; itemId: string }
-  | { kind: 'new'; afterId: string | null; beforeId: string | null; parentId: string | null }
+  | {
+      kind: 'new'
+      afterId: string | null
+      beforeId: string | null
+      parentId: string | null
+      /**
+       * Group to create into, set only by a Project-view seam. Absent means
+       * "no opinion" — Priority view has no groups, so a new item there is
+       * unassigned, exactly as before. `null` is a real value (the unassigned
+       * bucket) and is distinct from absent.
+       */
+      projectId?: string | null
+    }
 
 /**
  * Returns the next weekspan, or null for any no-op — matching the `mutate`
@@ -39,6 +51,7 @@ export function commitEdit(
       ...(target.afterId ? { afterId: target.afterId } : {}),
       ...(target.beforeId ? { beforeId: target.beforeId } : {}),
       ...(target.parentId ? { parentId: target.parentId } : {}),
+      ...(target.projectId != null ? { projectId: target.projectId } : {}),
     }).weekspan
   } catch {
     // insertItem throws on a bad anchor or blank title. Refusing to write is

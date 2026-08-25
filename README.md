@@ -77,7 +77,39 @@ so any agent pointed at that folder learns the rules without being told.
 - **Skips carry provenance.** `deliberate` is a choice; `auto` is catch-up after an absence.
   Conflating them would destroy the signal the field exists for.
 
+## Moving it to another machine
+
+The web app builds to **one self-contained HTML file**. Nothing to install on the receiving
+machine — no Node, no repo, no server.
+
+```bash
+npm run release
+```
+
+Produces `dist-release/`:
+
+| file | what it is |
+| --- | --- |
+| `weekspan.html` | the whole app, ~260KB — this is all you need |
+| `weekspan-cli.mjs` | the CLI, bundled (needs Node 18+) |
+| `weekspan.schema.json`, `templates/` | sidecars `init` writes beside a new ledger |
+| `READ-ME-FIRST.txt` | instructions, so the folder explains itself later |
+| `weekspan-release.zip` | all of the above, for when `.html` attachments get blocked |
+
+Send yourself `weekspan.html` (or the zip if your mail/Slack filter eats HTML), save it
+somewhere permanent, and open it in **Chrome or Edge** — the ledger is read and written through
+the File System Access API, which Firefox and Safari do not implement.
+
+Want the repo on the other machine too, for development or the CLI? Copy it over and ask Claude
+or Cursor to run the **`weekspan-setup`** skill (`.claude/skills/weekspan-setup/`); it checks
+Node, installs, runs the full verify, and builds the release for you.
+
+**There is no sync.** The ledger is a file; two machines editing their own copy will diverge.
+`weekspan-core` has a real three-way merge, but nothing runs it across machines automatically.
+See [docs/google-drive-sync.md](docs/google-drive-sync.md) before relying on one ledger in two
+places.
+
 ## Status
 
-`weekspan-core` and the CLI are complete and tested. The web app is not built — the grid is the
-main remaining engineering risk (wrapping rows that stay column-aligned across the whole table).
+`weekspan-core`, the CLI and the web app are complete and tested — around 1,000 tests plus two
+Playwright probes that drive the built app in a real browser (`npm run verify`).

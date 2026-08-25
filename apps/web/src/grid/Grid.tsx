@@ -5,6 +5,7 @@ import type { IsoDate } from '@weekspan/weekspan-core'
 import { intentForMouse, type MouseIntent } from '../interaction/mouse.js'
 import { InlineEdit } from '../add/InlineEdit.js'
 import type { ProjectRow } from './projectView.js'
+import { dividerKey } from '../interaction/projectDragPreview.js'
 
 export interface GridInteraction {
   /** Currently selected cell, or null. */
@@ -41,9 +42,22 @@ export interface GridInteraction {
    * A draft row sits in the gap identified by these neighbours. Rendered as an
    * ordinary row so typing a new item feels exactly like editing an existing one.
    */
-  draftAfterId?: string | null
+  /**
+   * Which seam currently holds the unsaved draft row, as a slot key:
+   * `top`, `after:<itemId>`, or `group:<dividerKey>`. A bare item id could not
+   * name the two slots that have no row above them — the top of Priority view
+   * and the first position in a project group — so both were unreachable: the
+   * seam opened a draft that then rendered nowhere.
+   */
+  draftSlot?: string | null
   /** Clicking the seam between two rows opens a draft there. */
-  onInsertBetween?: (afterId: string | null, beforeId: string | null, parentId: string | null) => void
+  onInsertBetween?: (
+    afterId: string | null,
+    beforeId: string | null,
+    parentId: string | null,
+    /** Project-view seams only: the group the new item should join. */
+    projectId?: string | null,
+  ) => void
   /**
    * Project view: rows interleaved with group dividers. When set, these replace
    * the flat row list. Same grid, same geometry — only the row sequence differs.
@@ -355,6 +369,37 @@ function seamParentId(rows: readonly RowVM[], i: number): string | null {
 }
 
 /**
+ * The project group row `i` sits in — the nearest divider above it. This is the
+ * same rule `dropFromRows` uses to resolve a drop, so a seam offers exactly the
+ * group a drop into that gap would land in.
+ */
+function groupAt(rows: readonly ProjectRow[], i: number): string | null {
+  for (let j = i; j >= 0; j--) {
+    const r = rows[j]!
+    if (r.kind === 'divider') return r.projectId
+  }
+  return null
+}
+
+/**
+ * `seamParentId` for the project list. Rank scopes are sibling scopes, NOT
+ * project groups: a child's rank still compares only against its siblings, so
+ * grouping must not be mistaken for nesting. The walk stops at a divider —
+ * a root above a group header is in a different group and cannot be the parent
+ * of anything below it.
+ */
+function projectSeamParentId(rows: readonly ProjectRow[], i: number): string | null {
+  const next = rows[i + 1]
+  if (!next || next.kind !== 'item' || next.row.depth === 0) return null
+  for (let j = i; j >= 0; j--) {
+    const r = rows[j]!
+    if (r.kind === 'divider') return null
+    if (r.row.depth === 0) return r.row.id
+  }
+  return null
+}
+
+/**
  * The hover seam between two rows. An overlay, never a layout change — the gap
  * must not resize on hover or the whole grid twitches as the pointer moves.
  */
@@ -362,18 +407,21 @@ function Seam({
   afterId,
   beforeId,
   parentId,
+  projectId,
   interaction,
 }: {
   afterId: string | null
   beforeId: string | null
   parentId: string | null
+  /** Set by Project-view seams; absent in Priority view, which has no groups. */
+  projectId?: string | null
   interaction: GridInteraction
 }): JSX.Element | null {
   if (!interaction.onInsertBetween) return null
   return (
     <div
       className="ws-seam"
-      onClick={() => interaction.onInsertBetween?.(afterId, beforeId, parentId)}
+      onClick={() => interaction.onInsertBetween?.(afterId, beforeId, parentId, projectId)}
       title="Insert an item here"
     >
       <span className="ws-seam-plus">+</span>
@@ -394,7 +442,7 @@ function DividerRow({
   interaction: GridInteraction
 }): JSX.Element {
   return (
-    <div className="ws-divider">
+    <div className="ws-divider" data-divider-key={dividerKey(divider.projectId)}>
       <button
         className="ws-divider-disclosure"
         type="button"
@@ -482,35 +530,75 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
       )}
 
       {interaction.projectRows
-        ? interaction.projectRows.map((pr, i) =>
-            pr.kind === 'divider' ? (
-              <DividerRow divider={pr} interaction={interaction} key={`d-${pr.projectId ?? 'none'}`} />
-            ) : (
-              <Row
-                row={pr.row}
-                interaction={interaction}
-                dragging={interaction.draggingId === pr.row.id}
-                key={pr.row.id}
-              />
-            ),
-          )
+        ? interaction.projectRows.map((pr, i) => {
+            if (pr.kind === 'divider') {
+              const first = interaction.projectRows![i + 1]
+              return (
+                <Fragment key={`d-${pr.projectId ?? 'none'}`}>
+                  <DividerRow divider={pr} interaction={interaction} />
+                  {/* A seam directly under the header is the only way to create
+                      the FIRST item of a group — and the only way to put
+                      anything into a group that is currently empty. */}
+                  {pr.collapsed ? null : (
+                    <Seam
+                      afterId={null}
+                      beforeId={first && first.kind === 'item' ? first.row.id : null}
+                      parentId={null}
+                      projectId={pr.projectId}
+                      interaction={interaction}
+                    />
+                  )}
+                  {interaction.draftSlot === `group:${dividerKey(pr.projectId)}` ? (
+                    <DraftRow interaction={interaction} depth={0} />
+                  ) : null}
+                </Fragment>
+              )
+            }
+            // The group this row sits in, and whether it is the last row of it.
+            // Both come from scanning the rendered list, so a seam always offers
+            // the group the user can see above it.
+            const group = groupAt(interaction.projectRows!, i)
+            const next = interaction.projectRows![i + 1]
+            const lastOfGroup = !next || next.kind === 'divider'
+            return (
+              <Fragment key={pr.row.id}>
+                <Row
+                  row={pr.row}
+                  interaction={interaction}
+                  dragging={interaction.draggingId === pr.row.id}
+                />
+                {interaction.draftSlot === `after:${pr.row.id}` ? (
+                  <DraftRow interaction={interaction} depth={pr.row.depth} />
+                ) : null}
+                <Seam
+                  afterId={pr.row.id}
+                  beforeId={lastOfGroup ? null : (next.kind === 'item' ? next.row.id : null)}
+                  // Rank scope is sibling-scoped exactly as in Priority view;
+                  // a project group is not a rank scope.
+                  parentId={projectSeamParentId(interaction.projectRows!, i)}
+                  projectId={group}
+                  interaction={interaction}
+                />
+              </Fragment>
+            )
+          })
         : null}
       {interaction.projectRows ? null : (interaction.previewRows ?? vm.rows).map((row, i, arr) => (
         <Fragment key={row.id}>
           {i === 0 ? (
-            <Seam
-              afterId={null}
-              beforeId={row.id}
-              parentId={null}
-              interaction={interaction}
-            />
+            <Fragment>
+              <Seam afterId={null} beforeId={row.id} parentId={null} interaction={interaction} />
+              {interaction.draftSlot === 'top' ? (
+                <DraftRow interaction={interaction} depth={0} />
+              ) : null}
+            </Fragment>
           ) : null}
           <Row
             row={row}
             interaction={interaction}
             dragging={interaction.draggingId === row.id}
           />
-          {interaction.draftAfterId === row.id ? (
+          {interaction.draftSlot === `after:${row.id}` ? (
             <DraftRow interaction={interaction} depth={row.depth} />
           ) : null}
           <Seam

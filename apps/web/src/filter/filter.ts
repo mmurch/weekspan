@@ -13,6 +13,7 @@
  */
 
 import type { RowVM } from '../grid/viewModel.js'
+import type { ProjectRow } from '../grid/projectView.js'
 
 export interface FilterQuery {
   /** Lowercased, whitespace-split plain-text terms, ANDed at match time. */
@@ -22,15 +23,6 @@ export interface FilterQuery {
   recurring?: boolean
 }
 
-/** A filtered row, tagged with whether it matched directly or is showing only as hierarchy context. */
-export interface FilterRowVM extends RowVM {
-  /**
-   * True when this row is present ONLY to keep a matching parent/child
-   * visible in context — it did not itself match the query. The UI is
-   * expected to dim these (see `FilterField`'s consumer).
-   */
-  contextOnly: boolean
-}
 
 function isEmptyQuery(query: FilterQuery): boolean {
   return (
@@ -124,66 +116,62 @@ export function matchesFilter(
 }
 
 /**
- * Filter `rows` by `query`, preserving rank order, and widening the result
- * so a hierarchy never gets torn apart into orphans:
+ * Filter `rows` by `query`, preserving rank order. ONLY rows that match are
+ * returned — a filtered grid shows matches and nothing else.
  *
- *   - a matching PARENT (depth 0) pulls every one of its children (the run
- *     of depth-1 rows immediately following it) into the result as context;
- *   - a matching CHILD (depth 1) pulls its parent — the nearest PRECEDING
- *     depth-0 row — into the result as context.
+ * An earlier version widened the result to keep a match's parent or children
+ * visible as context, tagging them `contextOnly` for the UI to dim. Nothing
+ * ever consumed that flag, so those rows rendered identically to real matches:
+ * typing a term left items on screen that plainly did not contain it, with no
+ * way to tell which was which. Rather than wire up the dimming, the widening is
+ * gone — "show me what matches" is what the box appears to promise, and a
+ * filtered list is a lookup tool, not a place to read hierarchy.
  *
- * `RowVM` carries `depth`, not a parent id (the same constraint `Grid.tsx`
- * works around with `seamParentId`), so "parent" here means the same thing
- * it means there: adjacency by depth, not a stored relationship. That is
- * exact for the priority grid, where a child always immediately follows its
- * parent. In Project view a child can be sorted into a different project
- * bucket than its parent (parentId and projectId are independent axes —
- * see `projectView.ts`), so if the caller flattens a `ProjectVM`'s rows
- * bucket-by-bucket before calling this, cross-bucket parent/child context
- * cannot be recovered from `RowVM` alone; only same-bucket adjacency is
- * seen. This is a limitation of what `RowVM` exposes, not of this function.
- *
- * Context-only rows are tagged `contextOnly: true` (a row that both matches
- * directly AND would also have been pulled in as context is tagged
- * `contextOnly: false` — direct match wins).
+ * The cost, stated plainly: a matching child whose parent does not match still
+ * renders at depth 1, so it keeps its indent with nothing above it. That reads
+ * as a slightly indented row, not as a broken tree, and it beats showing a
+ * parent the user did not search for.
  */
 export function filterRows(
   rows: readonly RowVM[],
   query: FilterQuery,
   projectNameById: ReadonlyMap<string, string>,
-): FilterRowVM[] {
-  if (isEmptyQuery(query)) {
-    return rows.map((row) => ({ ...row, contextOnly: false }))
-  }
+): RowVM[] {
+  if (isEmptyQuery(query)) return [...rows]
+  return rows.filter((row) => matchesFilter(row, query, projectNameById))
+}
 
-  const directHit = rows.map((row) => matchesFilter(row, query, projectNameById))
-  const keep = [...directHit]
-
-  // Matching parent -> pull in its run of children.
+/**
+ * The Project-view equivalent: keep matching item rows, and keep a group
+ * divider only when something under it survived.
+ *
+ * Without the second half, filtering Project view would leave a column of empty
+ * group headers standing over nothing — the visual equivalent of the context
+ * rows this module just stopped emitting. An empty group is not a match.
+ *
+ * Takes the ids to keep rather than re-running `matchesFilter`, so Priority and
+ * Project view cannot disagree about what matched: both read the same set,
+ * computed once from the same `RowVM[]`.
+ */
+export function filterProjectRows(
+  rows: readonly ProjectRow[],
+  keepIds: ReadonlySet<string>,
+): ProjectRow[] {
+  const out: ProjectRow[] = []
   for (let i = 0; i < rows.length; i++) {
-    if (rows[i]!.depth === 0 && directHit[i]) {
-      for (let j = i + 1; j < rows.length && rows[j]!.depth === 1; j++) {
-        keep[j] = true
-      }
+    const row = rows[i]!
+    if (row.kind === 'item') {
+      if (keepIds.has(row.row.id)) out.push(row)
+      continue
     }
-  }
-
-  // Matching child -> pull in its nearest preceding depth-0 row.
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i]!.depth === 1 && directHit[i]) {
-      for (let j = i - 1; j >= 0; j--) {
-        if (rows[j]!.depth === 0) {
-          keep[j] = true
-          break
-        }
-      }
+    // A divider survives only if some item before the NEXT divider does.
+    let hasSurvivor = false
+    for (let j = i + 1; j < rows.length; j++) {
+      const next = rows[j]!
+      if (next.kind === 'divider') break
+      if (keepIds.has(next.row.id)) { hasSurvivor = true; break }
     }
-  }
-
-  const out: FilterRowVM[] = []
-  for (let i = 0; i < rows.length; i++) {
-    if (!keep[i]) continue
-    out.push({ ...rows[i]!, contextOnly: !directHit[i] })
+    if (hasSurvivor) out.push(row)
   }
   return out
 }

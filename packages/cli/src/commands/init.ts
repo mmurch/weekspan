@@ -22,6 +22,12 @@ function loadSchemaJson(): string | undefined {
   const candidates = [
     path.resolve(here, '../../../weekspan-core/weekspan.schema.json'),
     path.resolve(here, '../../weekspan-core/weekspan.schema.json'),
+    // Beside the executable. `npm run release` bundles the CLI into a single
+    // file and copies it out of the workspace, which puts weekspan-core's
+    // directory permanently out of reach of the two relative paths above — so
+    // `init` on a fresh machine silently shipped no schema and, via the same
+    // resolution problem in loadTemplate, no AGENTS.md/CLAUDE.md either.
+    path.resolve(here, './weekspan.schema.json'),
   ]
   for (const c of candidates) {
     try {

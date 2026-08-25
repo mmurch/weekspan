@@ -14,7 +14,8 @@
     "build:single": "node scripts/build-singlefile.mjs",
     "probe:file": "node scripts/probe-singlefile.mjs",
     "probe:handles": "node scripts/probe-handle-persistence.mjs",
-    "verify": "npm run typecheck && npm run test && npm run build:single && npm run probe:file"
+    "verify": "npm run typecheck && npm run test && npm run build:single && npm run probe:file && npm run probe:project",
+    "probe:project": "node scripts/probe-project-view.mjs"
   },
   "dependencies": {
     "@weekspan/weekspan-core": "0.1.0",

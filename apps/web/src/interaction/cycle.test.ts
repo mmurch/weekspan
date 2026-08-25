@@ -130,7 +130,7 @@ describe('nextMarkState — generated occurrences', () => {
     // ...but the cell is NOT truly empty: the rule's generated due is back,
     // which is correct — a generated occurrence with no exception recorded
     // against it is due, by definition of the rule that generates it.
-    expect(cycleFor(item, today)).toBe('done') // i.e. effectiveMark reads 'due' again, next step is 'done'
+    expect(cycleFor(item, today, [])).toBe('done') // i.e. effectiveMark reads 'due' again, next step is 'done'
   })
 })
 
@@ -221,7 +221,7 @@ describe('cycleFor — pure step function edge case', () => {
       rank: 'a',
       marks: { [today]: { kind: 'skip', provenance: 'deliberate' } },
     }
-    expect(cycleFor(item, today)).toBeNull()
+    expect(cycleFor(item, today, [])).toBeNull()
   })
 })
 

@@ -140,3 +140,45 @@ describe('buildGrid — vacation days', () => {
     }
   })
 })
+
+describe('buildGrid — a recurring rule firing on a vacation day', () => {
+  // Weekly on Mondays. 2026-08-24 is the Monday of the current week.
+  const MONDAY: IsoDate = '2026-08-24'
+
+  function withPlants(vacationDays: IsoDate[]) {
+    return createWeekspan({
+      vacationDays,
+      items: [
+        {
+          id: 'plants',
+          title: 'water the plants',
+          rank: 'a0',
+          marks: {},
+          recurrence: { freq: 'weekly', weekday: 1, anchor: '2026-01-05' },
+        },
+      ],
+    })
+  }
+
+  function plantsCellAt(vacationDays: IsoDate[], date: IsoDate) {
+    const grid = buildGrid(withPlants(vacationDays), today)
+    const row = grid.rows.find((r) => r.id === 'plants')!
+    return row.cells[grid.dates.indexOf(date)]!
+  }
+
+  it('paints the cell as vacation with no due chip, instead of a generated due', () => {
+    expect(plantsCellAt([], MONDAY)).toMatchObject({ kind: 'due', generated: true })
+    // Hatched, but empty — the design's "vacation cells refuse due dates".
+    expect(plantsCellAt([MONDAY], MONDAY)).toMatchObject({
+      kind: null,
+      generated: false,
+      isVacation: true,
+    })
+  })
+
+  it('leaves the following week\'s occurrence exactly where the rule puts it', () => {
+    // Suppression is not a shift: nothing moves to Tuesday, and next Monday is normal.
+    expect(plantsCellAt([MONDAY], '2026-08-25')).toMatchObject({ kind: null })
+    expect(plantsCellAt([MONDAY], '2026-08-31')).toMatchObject({ kind: 'due', generated: true })
+  })
+})

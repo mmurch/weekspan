@@ -219,11 +219,11 @@ function buildCell(
   weekspan: Weekspan,
   pastByWeek: Map<IsoWeek, boolean>,
 ): CellVM {
-  const mark = effectiveMark(item, date)
+  const mark = effectiveMark(item, date, weekspan.vacationDays)
   return {
     date,
     kind: mark ? mark.kind : null,
-    generated: isGeneratedOccurrence(item, date),
+    generated: isGeneratedOccurrence(item, date, weekspan.vacationDays),
     isToday: date === today,
     isVacation: weekspan.vacationDays.includes(date),
     isWeekend: isWeekend(date),

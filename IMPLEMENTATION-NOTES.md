@@ -135,6 +135,28 @@ Knock-on changes:
   Strikethrough is reserved for completion; conflating "I didn't do this" with "I finished
   this" is the wrong signal on a habit the user is trying to break.
 
+### Vacation days suppress generated occurrences (task #58)
+
+- `effectiveMark` and `isGeneratedOccurrence` take `vacationDays` as a **required** third
+  argument. That was the bug: both took only `(item, date)`, so a recurring rule firing on a
+  vacation day rendered a `due` chip in a hatched cell and blocked close-out. A defaulted
+  `[]` would have let the next caller reintroduce it silently, so the parameter is required
+  and the compiler names every call site.
+- **Suppress, don't shift.** A rule firing on a vacation day renders nothing; the next
+  occurrence still lands on the date the rule names. Shifting it to the next working day
+  would materialize a due on a date the rule never generated — the one thing derived state
+  must not do — and would drag in a tail of edge cases (runs of vacation days, week
+  boundaries, a destination that already has a mark).
+- The complement already existed: `toggleVacation` (web) shifts **explicit** dues forward
+  per the design. Explicit marks are untouched here — they still render on a vacation day
+  and still block close-out. Days get marked vacation after the fact, and hiding a
+  completion the user recorded would destroy history at the render layer.
+- Falls out of this for free: `autoClose` writes **no** auto-skip for a suppressed
+  occurrence, so a fortnight away leaves no trail of skip marks. That is what "the week
+  still closes normally" means in the design.
+- `displayState` deliberately does NOT take `vacationDays`. It only scans explicit marks in
+  the current period — it never synthesizes — so vacation cannot change its answer.
+
 ## `window.ts`
 
 - Week comparisons use `weeksBetween`, not string compare, so the `W52`/`W53` → `W01`
@@ -544,3 +566,183 @@ both call the same function; it exists to fail loudly if someone reintroduces a 
 *Flagged:* the CLI's user-facing error message now comes from core's error text verbatim, so
 changing the wording in core changes the CLI's output. That coupling is the point, but it means
 message-stability assertions exist on both sides of the boundary.
+
+## Project view was inert — three interactions, one missing wire
+
+Reported as three separate bugs (no drag reordering, no dragging into a project, no inline
+create). Two of the three were the same missing wire.
+
+**The drag.** `useDragPreview` was handed Priority view's `vm`, while `handleProjectReorder`
+resolved the drop against `projectVm.rows`. `dropFromRows` was always written to read the
+PREVIEWED rows — "what you see is what commits" — but nothing produced a previewed project
+list, so it got the committed one, found the item exactly where it already was, and resolved
+to its own current group and neighbours. `minimalMoveRank` then correctly returned null and
+`applyProjectDrop` correctly wrote nothing. Every function passed its own tests; the failure
+lived entirely between them.
+
+- `projectDragPreview.ts` is the missing half: the same lift-and-reinsert as `dragPreview.ts`,
+  but over a list that contains dividers. Dividers are load-bearing — a slot immediately after
+  one is what "first item of this group" means, and it is the ONLY landing slot for a group
+  that is currently empty, so they must be in the index space.
+- Identity is positional, not by id. Item ids come from the file and divider keys are project
+  ids; one shared string namespace would be a collision waiting to happen.
+- Indices are in REST space (the list with the dragged group already removed). Both preview
+  functions agree on that, and it is now stated in the doc comment — computing against the
+  full list is off by one whenever the dragged row sits above the target, which is exactly
+  the bug the first version of the test had.
+- The pointer lifecycle (threshold, lift, Escape, commit-on-release) is identical in both
+  views, so `useDragPreview` now takes a `DragAdapter<T, B>` instead of a `GridVM`. `B` — the
+  measured-box shape — stays opaque to the hook, so neither view needs a cast. Both adapters
+  are built every render and both hooks always run; only the active view's ever sees a
+  pointerdown.
+
+**Inline create.** Project view rendered no `<Seam>` and no `<DraftRow>` at all. Adding them
+surfaced a second, pre-existing bug: the draft was keyed by `draftAfterId`, the id of the row
+above it, so the two slots with no row above them — the top of Priority view, and the first
+position in a group — opened a draft that then rendered nowhere. Replaced with `draftSlot`,
+a key of `top` / `after:<id>` / `group:<dividerKey>`, computed by `draftSlotKey` in App and
+matched in Grid.
+
+`EditTarget.new` gained an optional `projectId` so a seam inside a group creates INTO that
+group. Absent means "no opinion" (Priority view, which has no groups); `null` is the real,
+distinct value for the unassigned bucket.
+
+*Flagged:* a project group is NOT a rank scope. `projectSeamParentId` stops its walk at a
+divider, so grouping is never mistaken for nesting.
+
+### `scripts/probe-project-view.mjs` — because unit tests could not have caught this
+
+Every pure function involved was correct and tested. The bug was in the wiring, which only
+exists once the app is assembled, so the probe drives the built single-file app in a real
+browser and asserts on the DOM: a drag files an item into another group, a seam opens a
+draft, the draft commits into the group it was opened in. Reintroducing the original one-line
+bug fails it. Wired into `npm run verify` (`probe:project`).
+
+The probe strips `document.documentElement.style.zoom` before driving anything. CSS `zoom`
+puts layout and visual coordinates in different spaces — documented in App.tsx as harmless
+for real users but fatal for synthetic pointer coordinates, and it is: Playwright reported
+the Priority button intercepting clicks aimed at Project, 30px away.
+
+## View toggle read backwards (`.ws-seg`)
+
+The SELECTED segment carried a solid dark fill — this app's primary-action look, the same as
+`.ws-rail-btn--dark` — so it read as "press me". The unselected one sat at `--ws-ink-3`, the
+muted ink used for disabled metadata, so it read as unavailable. Both signals inverted.
+
+Now a proper segmented control: one recessed track (`.ws-seggroup`), the current view a raised
+pill on it (full ink, weight 600, own surface and hairline), the other plain readable ink with
+a hover fill. The pill says position, never action.
+
+Built from ink, weight and hairline rather than a light/dark fill relationship on purpose:
+`--ws-panel` sits ABOVE `--ws-subtle` in Paper and BELOW it in both dark themes, so a fill
+alone would flip meaning between themes. Weight and ink contrast do not. Verified by
+screenshot in all three. `aria-pressed` carries the state for screen readers, since the pill
+styling says nothing to them.
+
+## Filter now hides non-matches (was: showed them, undimmed)
+
+`filterRows` widened its result to keep a match's parent or children on screen as context,
+tagging them `contextOnly` for the UI to dim. **Nothing ever consumed that flag.** So context
+rows rendered identically to real matches, and typing a term left items on screen that plainly
+did not contain it — with no way to tell which was which. That is the bug; the flag was a
+design that was never finished.
+
+Rather than wire up the dimming, the widening is gone. "Show me what matches" is what the box
+appears to promise, and a filtered list is a lookup tool, not a place to read hierarchy. The
+cost, stated in the code: a matching child whose parent does not match keeps its depth-1
+indent with nothing above it. That reads as a slightly indented row, not a broken tree.
+
+**Project view honoured the filter not at all** — `Grid` ignores `previewRows` in its project
+branch, so the filtered array never reached it. `filterProjectRows` fixes that, and drops a
+group divider when nothing under it survived: an empty group header standing over nothing is
+the same failure as a context row.
+
+Both views read ONE id set (`matchedIds` in App), computed once from the same `RowVM[]`, so a
+term can never show an item in one view and hide it in the other. There is a test for exactly
+that.
+
+## Drag auto-scroll (and the "row detaches from the cursor" symptom)
+
+Two reported symptoms, one root cause each, and they had to be fixed together.
+
+- **Scrolled far too late.** There was no auto-scroll at all; the only scrolling was the
+  browser's own, once the pointer left the window. `autoscroll.ts` starts at 72px from either
+  edge — deliberately generous, because the sticky header rows eat the top ~58px of the scroll
+  box and a tight zone would only trigger once the row was already hidden behind them. Speed
+  ramps linearly from 0 at the zone boundary to 18px/frame at the edge, then holds. Constant
+  speed inside the zone was the obvious alternative and feels much worse: it lurches the
+  instant you enter, with no way to nudge by a row.
+- **Row appeared disjointed from the cursor.** It was never attached — `liftY` was computed on
+  every pointermove and **read by nothing** (now deleted). The row is highlighted in its
+  previewed position, and that position had stopped tracking: `boxes` are viewport rects
+  measured ONCE at pointerdown, so any scroll invalidated all of them by the scroll delta.
+
+  Fixed by adding the delta to the pointer instead of re-measuring, which is the same
+  comparison — `pointerY > box.top - delta + h/2` ⟺ `pointerY + delta > box.top + h/2` — at one
+  subtraction per frame instead of a `querySelector` per row. Verified in a browser: after
+  352px of auto-scrolling, the dragged row sits exactly under the cursor (index gap 0).
+
+Auto-scroll runs off `requestAnimationFrame`, not off pointermove: holding the pointer still
+inside the edge zone must keep scrolling, and a stationary pointer emits no move events. It
+recomputes the preview only when `scrollTop` actually changed, so a container already pinned at
+an end does not re-render the grid every frame.
+
+## Sticky headers were translucent (day/date row)
+
+`--ws-weekend-bg` and `--ws-past-tint` are translucent BY DESIGN — on a cell they are a wash
+laid over the row beneath, which is right, and `.ws-cell--weekend` / `.ws-cell--past` still use
+them raw. But `.ws-day` is `position: sticky`, and setting the tint as the whole background
+replaced the opaque `--ws-subtle` base with a 3%-alpha film. Every row scrolling under the
+header showed straight through it — chips, gridlines and all. `.ws-head-weekendspacer` had the
+same bug.
+
+Fixed by layering the tint over `--ws-subtle` as a gradient
+(`linear-gradient(tint, tint), var(--ws-subtle)`), which keeps the intended colour to the pixel
+while making the result opaque. Done in CSS rather than by inventing per-theme opaque tokens so
+the four themes stay in sync for free. Audited every `position: sticky` rule in `Grid.css`;
+these two were the only translucent ones.
+
+## Distribution — `npm run release` and the `weekspan-setup` skill
+
+The fact that decides the whole question: the web app builds to ONE self-contained HTML file
+that runs from `file://`. **The repo is not a prerequisite for USING weekspan, only for
+changing it.** So the answer to "zip the repo and Slack it to myself" is no — send the 263KB
+HTML file.
+
+`scripts/package-release.mjs` (`npm run release`) stages `dist-release/`. A `.zip` is emitted
+alongside the loose files because corporate mail and Slack filters routinely strip `.html`
+attachments — send whichever gets through.
+
+**A real defect surfaced while verifying the artifact**, which is the argument for testing a
+release rather than assuming it: `init` locates `weekspan.schema.json` and the AGENTS.md /
+CLAUDE.md templates by walking RELATIVE to its own module path. esbuild bundles the CLI to a
+single file, and copying that file out of the workspace put weekspan-core permanently out of
+reach — so `init` on a fresh machine silently produced a bare ledger with a warning and none of
+the three agent-facing files. Fixed by adding a beside-the-executable candidate path in
+`init.ts` and shipping the sidecars in `dist-release/`. Verified by running the packaged CLI
+from `/tmp` against an empty directory: all four files now written, no warning.
+
+Also confirmed the packaged app is genuinely standalone — opened from a bare `/tmp` directory
+with no repo and no `node_modules`, it renders 8 rows and 224 cells with zero console errors.
+It makes exactly one external request, for IBM Plex from `fonts.googleapis.com`; a proxy
+blocking that costs the typeface and nothing else. Noted in the artifact's own README, since a
+work machine is where that matters.
+
+`.claude/skills/weekspan-setup/` is the other half: land the repo, ask Claude or Cursor to run
+it. It leads with "does this person actually need the repo?" — the honest answer is usually no.
+
+## Google Drive as source of truth — `docs/google-drive-sync.md`, NOT implemented
+
+Investigated and deliberately left unbuilt, per explicit instruction to stop if there was no
+obvious low-disruption answer. There isn't.
+
+The finding worth keeping here: **the app does not need to know what Drive is.** `useWeekspan`
+already polls every 2s, and `FileSystemStore.write()` already re-reads and runs the semantic
+three-way `merge()` rather than clobbering. Anything that keeps the local file in step with
+Drive inherits sync, change detection and conflict resolution for free. The question reduces to
+what moves bytes, which is exactly the position ARCHITECTURE.md already takes.
+
+Browser-direct Drive is structurally dead, not merely hard: the app ships as a `file://` page,
+which has a **null origin**, and Google OAuth cannot register a null origin. Hosting the page
+over HTTPS would fix it — and would also make the File System Access API work, which is already
+built and tested, so it buys nothing for real cost.

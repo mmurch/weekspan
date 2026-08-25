@@ -43,10 +43,20 @@ const RECURRING_CYCLE: ReadonlyArray<MarkKind | null> = [null, 'due', 'done', 's
  * produces but which other code paths such as the unbound `setSkip` action
  * could) is treated as sitting "before" the loop and steps to blank, so the
  * next press resumes the normal sequence instead of getting stuck.
+ *
+ * `vacationDays` reaches `effectiveMark`, so a recurring item reads as blank
+ * on a vacation day rather than as a generated due. Cycling there still
+ * lands nowhere — `nextMarkState`'s vacation guard refuses the `due` step
+ * that blank advances to — but the read side now agrees with what the grid
+ * paints instead of stepping from a due the user cannot see.
  */
-export function cycleFor(item: Item, date: IsoDate): MarkKind | null {
+export function cycleFor(
+  item: Item,
+  date: IsoDate,
+  vacationDays: readonly IsoDate[],
+): MarkKind | null {
   const cycle = item.recurrence != null ? RECURRING_CYCLE : NON_RECURRING_CYCLE
-  const current = effectiveMark(item, date)?.kind ?? null
+  const current = effectiveMark(item, date, vacationDays)?.kind ?? null
   const idx = cycle.indexOf(current)
   const nextIdx = idx === -1 ? 0 : (idx + 1) % cycle.length
   return cycle[nextIdx]!
@@ -97,7 +107,7 @@ export function nextMarkState(
   const item = weekspan.items.find((i) => i.id === itemId)
   if (!item) return null
 
-  const next = cycleFor(item, date)
+  const next = cycleFor(item, date, weekspan.vacationDays)
 
   const isVacation = weekspan.vacationDays.includes(date)
   if (isVacation && (next === 'due' || next === 'done')) return null

@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { RowVM } from '../grid/viewModel.js'
 import { buildGrid } from '../grid/viewModel.js'
 import { demoWeekspan } from '../grid/fixtures.js'
-import { filterRows, matchesFilter, parseFilter, type FilterQuery } from './filter.js'
+import { buildProjectView } from '../grid/projectView.js'
+import { filterProjectRows, filterRows, matchesFilter, parseFilter, type FilterQuery } from './filter.js'
 
 const today: IsoDate = '2026-08-26' // Wednesday, 2026-W35
 
@@ -122,7 +123,6 @@ describe('filterRows — basics', () => {
   it('returns everything, unchanged and in the same order, for an empty query', () => {
     const result = filterRows(rows, parseFilter(''), projectNameById)
     expect(result.map((r) => r.id)).toEqual(rows.map((r) => r.id))
-    expect(result.every((r) => r.contextOnly === false)).toBe(true)
   })
 
   it('returns an empty array, cleanly, when nothing matches', () => {
@@ -138,14 +138,9 @@ describe('filterRows — basics', () => {
   })
 
   it('ANDs multiple plain-text terms regardless of order', () => {
-    // "choose dishwasher model — quiet + counter depth" contains both words;
-    // its child ("order dishwasher") matches neither directly but is pulled
-    // in as context because its parent matched.
+    // "choose dishwasher model — quiet + counter depth" contains both words.
     const result = filterRows(rows, parseFilter('quiet dishwasher'), projectNameById)
-    const dishwasher = result.find((r) => r.id === 'item-dishwasher')!
-    const child = result.find((r) => r.id === 'item-order-dishwasher')
-    expect(dishwasher.contextOnly).toBe(false)
-    expect(child?.contextOnly).toBe(true)
+    expect(result.map((r) => r.id)).toContain('item-dishwasher')
     expect(result.map((r) => r.id)).not.toContain('item-paint')
   })
 
@@ -158,36 +153,33 @@ describe('filterRows — basics', () => {
   })
 })
 
-describe('filterRows — hierarchy context', () => {
-  it('a matching parent pulls its children into the result as context', () => {
-    // Only item-dishwasher (the parent) is directly `is:done`; its child
-    // item-order-dishwasher is still open (due in 3 days).
+describe('filterRows — only matches are returned', () => {
+  it('does NOT pull in a non-matching child of a matching parent', () => {
+    // item-dishwasher (the parent) is `is:done`; its child is still open. The
+    // child does not match, so it must not be on screen — the whole point of
+    // the box is that what you see contains what you typed.
     const result = filterRows(rows, parseFilter('is:done'), projectNameById)
     const ids = result.map((r) => r.id)
     expect(ids).toContain('item-dishwasher')
-    expect(ids).toContain('item-order-dishwasher')
-
-    const parent = result.find((r) => r.id === 'item-dishwasher')!
-    const child = result.find((r) => r.id === 'item-order-dishwasher')!
-    expect(parent.contextOnly).toBe(false)
-    expect(child.contextOnly).toBe(true)
-
-    // Order preserved: parent still comes before its child.
-    expect(ids.indexOf('item-dishwasher')).toBeLessThan(ids.indexOf('item-order-dishwasher'))
+    expect(ids).not.toContain('item-order-dishwasher')
   })
 
-  it('a matching child pulls its parent into the result as context', () => {
-    // Only the child's title contains "order" — the parent's title
-    // ("choose dishwasher model — quiet + counter depth") does not.
+  it('does NOT pull in a non-matching parent of a matching child', () => {
+    // Only the child's title contains "order"; the parent's does not.
     const result = filterRows(rows, parseFilter('order'), projectNameById)
     const ids = result.map((r) => r.id)
     expect(ids).toContain('item-order-dishwasher')
-    expect(ids).toContain('item-dishwasher')
+    expect(ids).not.toContain('item-dishwasher')
+  })
 
-    const parent = result.find((r) => r.id === 'item-dishwasher')!
-    const child = result.find((r) => r.id === 'item-order-dishwasher')!
-    expect(child.contextOnly).toBe(false)
-    expect(parent.contextOnly).toBe(true)
+  it('every returned row genuinely matches the query', () => {
+    // The invariant the old context-widening broke, stated directly.
+    for (const q of ['order', 'is:done', 'dishwasher', 'project:work', 'a']) {
+      const query = parseFilter(q)
+      for (const row of filterRows(rows, query, projectNameById)) {
+        expect(matchesFilter(row, query, projectNameById)).toBe(true)
+      }
+    }
   })
 
   it('does not pull in unrelated rows that are neither a match nor adjacent context', () => {
@@ -198,5 +190,61 @@ describe('filterRows — hierarchy context', () => {
     const ids = result.map((r) => r.id)
     expect(ids).not.toContain('item-roadmap')
     expect(ids).not.toContain('item-paint')
+  })
+})
+
+describe('filterProjectRows', () => {
+  const projectRows = buildProjectView(demoWeekspan(today), today).rows
+  const idsFor = (q: string) =>
+    new Set(filterRows(rows, parseFilter(q), projectNameById).map((r) => r.id))
+
+  it('keeps only the matching items', () => {
+    const keep = idsFor('dishwasher')
+    const out = filterProjectRows(projectRows, keep)
+    const items = out.filter((r) => r.kind === 'item')
+    expect(items.length).toBeGreaterThan(0)
+    for (const r of items) {
+      if (r.kind === 'item') expect(keep.has(r.row.id)).toBe(true)
+    }
+  })
+
+  it('drops group headers left standing over nothing', () => {
+    const keep = idsFor('dishwasher')
+    const out = filterProjectRows(projectRows, keep)
+    // Every surviving divider must be followed by at least one item before the
+    // next divider — an empty group header is not a match.
+    for (let i = 0; i < out.length; i++) {
+      if (out[i]!.kind !== 'divider') continue
+      expect(out[i + 1]).toBeDefined()
+      expect(out[i + 1]!.kind).toBe('item')
+    }
+    // And it really did remove some — otherwise the assertion above is vacuous.
+    const before = projectRows.filter((r) => r.kind === 'divider').length
+    const after = out.filter((r) => r.kind === 'divider').length
+    expect(after).toBeLessThan(before)
+  })
+
+  it('returns nothing at all when nothing matches — no bare headers', () => {
+    expect(filterProjectRows(projectRows, new Set())).toEqual([])
+  })
+
+  it('is a subsequence — never reorders or duplicates', () => {
+    const out = filterProjectRows(projectRows, idsFor('a'))
+    let cursor = -1
+    for (const row of out) {
+      const at = projectRows.indexOf(row)
+      expect(at).toBeGreaterThan(cursor)
+      cursor = at
+    }
+  })
+
+  it('agrees with Priority view about what matched', () => {
+    // Both views read the same id set, so a term can never show an item in one
+    // view and hide it in the other.
+    const keep = idsFor('is:open')
+    const projectItems = filterProjectRows(projectRows, keep)
+      .filter((r) => r.kind === 'item')
+      .map((r) => (r.kind === 'item' ? r.row.id : ''))
+    expect(new Set(projectItems)).toEqual(keep)
   })
 })

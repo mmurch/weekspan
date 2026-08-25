@@ -92,27 +92,27 @@ describe('effectiveMark', () => {
 
   it('returns a generated due mark on a rule date with no explicit mark', () => {
     const item = makeItem({}, rule)
-    expect(effectiveMark(item, '2026-08-11')).toEqual({ kind: 'due' })
+    expect(effectiveMark(item, '2026-08-11', [])).toEqual({ kind: 'due' })
   })
 
   it('returns the explicit mark on a date that has one, overriding the generated occurrence', () => {
     const item = makeItem({ '2026-08-11': { kind: 'done' } }, rule)
-    expect(effectiveMark(item, '2026-08-11')).toEqual({ kind: 'done' })
+    expect(effectiveMark(item, '2026-08-11', [])).toEqual({ kind: 'done' })
   })
 
   it('returns the explicit mark on a non-rule date', () => {
     const item = makeItem({ '2026-08-12': { kind: 'due' } }, rule)
-    expect(effectiveMark(item, '2026-08-12')).toEqual({ kind: 'due' })
+    expect(effectiveMark(item, '2026-08-12', [])).toEqual({ kind: 'due' })
   })
 
   it('returns undefined when there is no explicit mark and no rule occurrence', () => {
     const item = makeItem({}, rule)
-    expect(effectiveMark(item, '2026-08-12')).toBeUndefined()
+    expect(effectiveMark(item, '2026-08-12', [])).toBeUndefined()
   })
 
   it('returns undefined for a non-recurring item with no mark', () => {
     const item = makeItem()
-    expect(effectiveMark(item, '2026-08-12')).toBeUndefined()
+    expect(effectiveMark(item, '2026-08-12', [])).toBeUndefined()
   })
 })
 
@@ -121,22 +121,77 @@ describe('isGeneratedOccurrence', () => {
 
   it('is true when due-ness comes only from the rule', () => {
     const item = makeItem({}, rule)
-    expect(isGeneratedOccurrence(item, '2026-08-11')).toBe(true)
+    expect(isGeneratedOccurrence(item, '2026-08-11', [])).toBe(true)
   })
 
   it('is false when an explicit mark exists on the rule date', () => {
     const item = makeItem({ '2026-08-11': { kind: 'done' } }, rule)
-    expect(isGeneratedOccurrence(item, '2026-08-11')).toBe(false)
+    expect(isGeneratedOccurrence(item, '2026-08-11', [])).toBe(false)
   })
 
   it('is false when the rule does not generate an occurrence on that date', () => {
     const item = makeItem({}, rule)
-    expect(isGeneratedOccurrence(item, '2026-08-12')).toBe(false)
+    expect(isGeneratedOccurrence(item, '2026-08-12', [])).toBe(false)
   })
 
   it('is false for a non-recurring item', () => {
     const item = makeItem()
-    expect(isGeneratedOccurrence(item, '2026-08-12')).toBe(false)
+    expect(isGeneratedOccurrence(item, '2026-08-12', [])).toBe(false)
+  })
+})
+
+describe('vacation days suppress generated occurrences', () => {
+  const rule: Recurrence = { freq: 'weekly', weekday: 2, anchor: '2026-08-04' } // Tuesdays
+
+  it('effectiveMark shows nothing on a rule date the user marked vacation', () => {
+    const item = makeItem({}, rule)
+    expect(effectiveMark(item, '2026-08-11', [])).toEqual({ kind: 'due' })
+    expect(effectiveMark(item, '2026-08-11', ['2026-08-11'])).toBeUndefined()
+  })
+
+  it('isGeneratedOccurrence agrees — nothing for close-out to block on', () => {
+    const item = makeItem({}, rule)
+    expect(isGeneratedOccurrence(item, '2026-08-11', ['2026-08-11'])).toBe(false)
+  })
+
+  it('a vacation day elsewhere in the week leaves the occurrence alone', () => {
+    const item = makeItem({}, rule)
+    // Away on the Monday; the Tuesday rule date is untouched.
+    expect(effectiveMark(item, '2026-08-11', ['2026-08-10'])).toEqual({ kind: 'due' })
+    expect(isGeneratedOccurrence(item, '2026-08-11', ['2026-08-10'])).toBe(true)
+  })
+
+  it('suppression is rendering-only: the NEXT occurrence still lands on the rule date', () => {
+    // The occurrence is not pushed to the next working day. Aug 11 is hidden;
+    // Aug 18 fires exactly as the weekly rule says, and Aug 12 stays blank.
+    const item = makeItem({}, rule)
+    const vac = ['2026-08-11']
+    expect(effectiveMark(item, '2026-08-12', vac)).toBeUndefined()
+    expect(effectiveMark(item, '2026-08-18', vac)).toEqual({ kind: 'due' })
+  })
+
+  it('an EXPLICIT mark on a vacation day still renders', () => {
+    // Days get marked vacation after the fact. A completion the user already
+    // recorded must not vanish from the grid.
+    const done = makeItem({ '2026-08-11': { kind: 'done' } }, rule)
+    expect(effectiveMark(done, '2026-08-11', ['2026-08-11'])).toEqual({ kind: 'done' })
+
+    const due = makeItem({ '2026-08-11': { kind: 'due' } }, rule)
+    expect(effectiveMark(due, '2026-08-11', ['2026-08-11'])).toEqual({ kind: 'due' })
+    // Still not GENERATED — it has an explicit mark, which is the prior rule.
+    expect(isGeneratedOccurrence(due, '2026-08-11', ['2026-08-11'])).toBe(false)
+  })
+
+  it('un-marking the vacation day restores the cell exactly — nothing was written', () => {
+    const item = makeItem({}, rule)
+    expect(effectiveMark(item, '2026-08-11', ['2026-08-11'])).toBeUndefined()
+    expect(effectiveMark(item, '2026-08-11', [])).toEqual({ kind: 'due' })
+    expect(item.marks).toEqual({})
+  })
+
+  it('does not touch a non-recurring item — vacation only suppresses synthesis', () => {
+    const item = makeItem({ '2026-08-11': { kind: 'due' } })
+    expect(effectiveMark(item, '2026-08-11', ['2026-08-11'])).toEqual({ kind: 'due' })
   })
 })
 

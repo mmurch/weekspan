@@ -97,7 +97,10 @@
   z-index: 3;
   height: var(--ws-head-1-h);
   box-sizing: border-box;
-  background: var(--ws-weekend-bg);
+  /* Sticky, so opaque — same reason as .ws-day--weekend below. */
+  background:
+    linear-gradient(var(--ws-weekend-bg), var(--ws-weekend-bg)),
+    var(--ws-subtle);
   border-bottom: 1px solid var(--ws-hair);
   border-left: 1px solid var(--ws-hair);
 }
@@ -128,8 +131,31 @@
   border-bottom: 1px solid var(--ws-hair-strong);
 }
 
-.ws-day--weekend { background: var(--ws-weekend-bg); }
-.ws-day--past { background: var(--ws-past-tint); }
+/*
+ * Sticky headers must be OPAQUE.
+ *
+ * --ws-weekend-bg and --ws-past-tint are translucent by design: on a cell they
+ * are a wash laid over the row beneath, which is exactly right (see
+ * .ws-cell--weekend / .ws-cell--past, which keep them raw). But .ws-day is
+ * `position: sticky`, so setting the tint as the whole background replaced the
+ * opaque --ws-subtle base with a 3%-alpha film — and every row scrolling under
+ * the header showed straight through it, chips and gridlines included.
+ *
+ * Layering the tint over --ws-subtle keeps the intended colour to the pixel
+ * while making the result fully opaque. Doing it here rather than inventing
+ * per-theme opaque tokens means the four themes stay in sync for free.
+ */
+.ws-day--weekend {
+  background:
+    linear-gradient(var(--ws-weekend-bg), var(--ws-weekend-bg)),
+    var(--ws-subtle);
+}
+
+.ws-day--past {
+  background:
+    linear-gradient(var(--ws-past-tint), var(--ws-past-tint)),
+    var(--ws-subtle);
+}
 
 .ws-day-letter {
   font: 600 10px/1 'IBM Plex Sans', sans-serif;

@@ -11,6 +11,7 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
-    "verify": "npm run typecheck && npm test && npm run verify -w @weekspan/web"
+    "verify": "npm run typecheck && npm test && npm run verify -w @weekspan/web",
+    "release": "node scripts/package-release.mjs"
   }
 }

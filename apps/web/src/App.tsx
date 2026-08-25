@@ -6,7 +6,7 @@ import { demoWeekspan, emptyWeekspan, stressWeekspan, wrappingWeekspan } from '.
 import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from './theme.js'
 import { ThemePicker } from './theme/ThemePicker.js'
 import { FilterField } from './filter/FilterField.js'
-import { filterRows, parseFilter } from './filter/filter.js'
+import { filterProjectRows, filterRows, parseFilter } from './filter/filter.js'
 import { toggleVacation } from './interaction/vacation.js'
 import { commitNotes } from './add/notes.js'
 import { commitBulk } from './add/bulkCapture.js'
@@ -22,12 +22,25 @@ import { serialize } from '@weekspan/weekspan-core'
 import { resolveKey, applyAction } from './interaction/keymap.js'
 import { reconcileSelection, selectionFromCell, type Selection } from './interaction/selection.js'
 import { CellMenu } from './interaction/CellMenu.js'
-import { useDragPreview } from './interaction/useDragPreview.js'
+import { priorityAdapter, projectAdapter, useDragPreview } from './interaction/useDragPreview.js'
 import { QuickCapture } from './add/QuickCapture.js'
 import { insertItem } from './add/draft.js'
 import { commitEdit, type EditTarget } from './add/commitEdit.js'
+import { dividerKey } from './interaction/projectDragPreview.js'
+
+/**
+ * Which seam an open draft belongs to. Mirrors the slot keys `Grid` renders
+ * against, so the draft appears in the gap that was actually clicked — including
+ * the two gaps with no row above them (top of Priority view, first position in a
+ * project group), which a bare `afterId` could not name at all.
+ */
+function draftSlotKey(t: Extract<EditTarget, { kind: 'new' }>): string {
+  if (t.afterId) return `after:${t.afterId}`
+  if (t.projectId !== undefined) return `group:${dividerKey(t.projectId)}`
+  return 'top'
+}
 import { commitProjectCapture } from './add/projectCapture.js'
-import { buildProjectView } from './grid/projectView.js'
+import { buildProjectView, type ProjectRow } from './grid/projectView.js'
 import { applyProjectDrop, dropFromRows } from './interaction/projectDrag.js'
 import { ProjectColorPicker } from './projects/ProjectColorPicker.js'
 import { setProjectColor } from '@weekspan/weekspan-core'
@@ -174,6 +187,15 @@ function Workspace({
 
   const filtering = filterText.trim() !== ''
 
+  /**
+   * Ids that survive the filter. Both views read this one set, so Priority and
+   * Project view can never disagree about what matched.
+   */
+  const matchedIds = useMemo(
+    () => (filtered ? new Set(filtered.map((r) => r.id)) : null),
+    [filtered],
+  )
+
   const projectVm = useMemo(
     () =>
       weekspan && view === 'project'
@@ -215,19 +237,31 @@ function Workspace({
    * read from the rows on screen, so what you see is what commits.
    */
   const handleProjectReorder = useCallback(
-    (itemId: string): void => {
-      if (!projectVm) return
-      const drop = dropFromRows(projectVm.rows, itemId)
+    (itemId: string, previewed: readonly ProjectRow[]): void => {
+      // Neighbours come from the PREVIEWED rows — the list the user is looking
+      // at — not from `projectVm.rows`. Reading the committed list here was the
+      // bug: it always found the item at its existing position, so the drop
+      // resolved to its own current group and neighbours and wrote nothing.
+      const drop = dropFromRows(previewed, itemId)
       if (!drop) return
       void mutate((w) => applyProjectDrop(w, drop))
     },
-    [projectVm, mutate],
+    [mutate],
   )
 
-  const { state: dragState, gripHandlers } = useDragPreview(
-    vm,
-    view === 'project' ? (id) => handleProjectReorder(id) : handleReorder,
+  // Both hooks run every render (rules of hooks); only the active view's adapter
+  // is ever handed a pointerdown, and the inactive one is null so it does no work.
+  const priorityDrag = useDragPreview(
+    useMemo(() => priorityAdapter(vm, handleReorder), [vm, handleReorder]),
   )
+  const projectDrag = useDragPreview(
+    useMemo(
+      () => projectAdapter(projectVm?.rows ?? null, handleProjectReorder),
+      [projectVm, handleProjectReorder],
+    ),
+  )
+  const { state: dragState, gripHandlers } =
+    view === 'project' ? projectDrag : priorityDrag
 
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
@@ -330,12 +364,30 @@ function Workspace({
             onCloseOut={() => setCloseOutOpen(true)}
             gripHandlers={gripHandlers}
             previewRows={
-              dragState.draggingId ? dragState.rows : filtering ? (filtered ?? null) : null
+              view === 'project'
+                ? null
+                : priorityDrag.state.draggingId
+                  ? priorityDrag.state.rows
+                  : filtering
+                    ? (filtered ?? null)
+                    : null
             }
             draggingId={dragState.draggingId}
             editingId={editing?.kind === 'existing' ? editing.itemId : null}
-            draftAfterId={editing?.kind === 'new' ? editing.afterId : null}
-            projectRows={projectVm?.rows ?? null}
+            draftSlot={editing?.kind === 'new' ? draftSlotKey(editing) : null}
+            projectRows={
+              view === 'project'
+                ? // Mid-drag, render the prospective order — the same array the
+                  // drop commits against, so what you see is what you get. A
+                  // drag beats the filter: the rows you are moving between must
+                  // stay put under the cursor.
+                  (projectDrag.state.draggingId
+                    ? (projectDrag.state.rows as ProjectRow[])
+                    : filtering && projectVm && matchedIds
+                      ? filterProjectRows(projectVm.rows, matchedIds)
+                      : (projectVm?.rows ?? null))
+                : null
+            }
             onToggleGroup={(projectId) =>
               setCollapsed((cur) => {
                 const next = new Set(cur)
@@ -369,8 +421,17 @@ function Workspace({
               void mutate((w) => commitNotes(w, id, notes))
             }}
             onStartEdit={(itemId) => setEditing({ kind: 'existing', itemId })}
-            onInsertBetween={(afterId, beforeId, parentId) =>
-              setEditing({ kind: 'new', afterId, beforeId, parentId })
+            onInsertBetween={(afterId, beforeId, parentId, projectId) =>
+              setEditing({
+                kind: 'new',
+                afterId,
+                beforeId,
+                parentId,
+                // A seam inside a project group creates INTO that group. In
+                // Priority view there is no group, so the field stays absent
+                // and the item is created unassigned as before.
+                ...(projectId !== undefined ? { projectId } : {}),
+              })
             }
             onCancelEdit={() => setEditing(null)}
             onCommitEdit={(title) => {
@@ -524,20 +585,26 @@ function TopBar({
       <span className="ws-filepicker">
         {name} <span className="ws-caret">▾</span>
       </span>
-      <button
-        className={`ws-seg${view === 'priority' ? ' ws-seg--active' : ''}`}
-        type="button"
-        onClick={() => onView('priority')}
-      >
-        Priority
-      </button>
-      <button
-        className={`ws-seg${view === 'project' ? ' ws-seg--active' : ''}`}
-        type="button"
-        onClick={() => onView('project')}
-      >
-        Project
-      </button>
+      {/* One group, two segments. `aria-pressed` is what tells a screen reader
+          which view is current — the pill styling alone says nothing. */}
+      <div className="ws-seggroup" role="group" aria-label="View">
+        <button
+          className={`ws-seg${view === 'priority' ? ' ws-seg--active' : ''}`}
+          type="button"
+          aria-pressed={view === 'priority'}
+          onClick={() => onView('priority')}
+        >
+          Priority
+        </button>
+        <button
+          className={`ws-seg${view === 'project' ? ' ws-seg--active' : ''}`}
+          type="button"
+          aria-pressed={view === 'project'}
+          onClick={() => onView('project')}
+        >
+          Project
+        </button>
+      </div>
       <FilterField
         value={filterText}
         onChange={onFilterChange}
