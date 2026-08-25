@@ -13,7 +13,31 @@
 import { build } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFile, writeFile, rm } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
+
+/**
+ * A build stamp, shown in the app's footer.
+ *
+ * The app is distributed by copying a file to another machine, so the question
+ * "is the thing on screen the thing I just installed?" comes up on every single
+ * update and is otherwise unanswerable — two builds look identical. Date plus
+ * short SHA answers it at a glance.
+ *
+ * `WEEKSPAN_BUILD` lets the release packager pass its own stamp so the zip
+ * name, the VERSION file and the footer cannot disagree.
+ */
+function buildStamp() {
+  if (process.env.WEEKSPAN_BUILD) return process.env.WEEKSPAN_BUILD
+  const date = new Date().toISOString().slice(0, 10)
+  let sha = 'nogit'
+  try {
+    sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
+  } catch {
+    // A copy of the source without .git still builds; it just says so.
+  }
+  return `${date} ${sha}`
+}
 
 const OUT = path.resolve('dist-single')
 
@@ -21,6 +45,7 @@ await build({
   root: process.cwd(),
   base: './',
   plugins: [react()],
+  define: { __WEEKSPAN_BUILD__: JSON.stringify(buildStamp()) },
   build: {
     outDir: OUT,
     emptyOutDir: true,

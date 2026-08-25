@@ -1,43 +1,66 @@
 #!/usr/bin/env node
 /**
- * Build the artifact you send to another machine.
+ * Build the zip you send to another machine.
  *
- * The important fact about this app, and the one that decides the whole
- * distribution question: `apps/web` builds to ONE self-contained HTML file.
- * Every script, style and font reference is inlined, so it runs from `file://`
- * with no server, no `npm install`, and no Node on the receiving machine. The
- * repo is not a prerequisite for USING weekspan — only for changing it.
+ * The fact that decides the whole distribution question: `apps/web` builds to
+ * ONE self-contained HTML file that runs from `file://`. No server, no
+ * `npm install`, no Node on the receiving machine. The repo is not a
+ * prerequisite for USING weekspan — only for changing it. So this does not zip
+ * the repo; it zips a ~260KB app plus the CLI and an installer.
  *
- * So the answer to "should I zip the repo and Slack it to myself" is no: zip
- * the 260KB HTML file instead, or just send the file. This script stages both,
- * plus the CLI bundle for anyone who wants the agent-facing write path too.
+ * The workflow this exists to serve is a LOOP, not a one-off:
  *
- * Why a .zip at all, when a single .html would do: corporate Slack and mail
- * filters routinely strip or refuse `.html` attachments, and browsers like to
- * render one inline rather than save it. A .zip survives that trip intact. Both
- * are emitted — send whichever gets through.
+ *     here            npm run release        -> dist-release/weekspan-<build>.zip
+ *     Slack/email     send it to yourself
+ *     there           unzip, ./install.sh    -> ~/weekspan, ledger untouched
  *
- * Everything lands in `dist-release/`, which is git-ignored and rebuilt from
- * scratch on every run so a stale file can never ride along in a release.
+ * Which is why the installer travels INSIDE the zip rather than living in the
+ * repo: on the receiving machine there is no repo to run a script from, and
+ * after the fifth update there is nothing to remember either.
+ *
+ * The zip is named for its build stamp, and the same stamp goes into VERSION
+ * and into the app's own footer — so "which build is this?" has one answer in
+ * three places instead of three answers.
  */
 import { execFileSync } from 'node:child_process'
-import { cpSync, mkdirSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const out = join(root, 'dist-release')
 
-function run(cmd, args, cwd = root) {
-  execFileSync(cmd, args, { cwd, stdio: 'inherit' })
+function run(cmd, args, cwd = root, env = {}) {
+  execFileSync(cmd, args, { cwd, stdio: 'inherit', env: { ...process.env, ...env } })
 }
 
-function kb(path) {
-  return `${Math.round(statSync(path).size / 1024)}KB`
+const kb = (p) => `${Math.round(statSync(p).size / 1024)}KB`
+
+/** `2026-08-25 a94c87b` — date for humans, SHA for exactness. */
+function buildStamp() {
+  const date = new Date().toISOString().slice(0, 10)
+  let sha = 'nogit'
+  let dirty = ''
+  try {
+    sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+    // An uncommitted build is a perfectly normal thing to send yourself, but it
+    // must not masquerade as the commit it was built from — that SHA no longer
+    // identifies what is in the zip.
+    const status = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' })
+    if (status.trim() !== '') dirty = '-dirty'
+  } catch {
+    // Building from a source copy with no .git is fine; it just says so.
+  }
+  return `${date} ${sha}${dirty}`
 }
 
+const stamp = buildStamp()
+// Filesystem-safe: the stamp has a space in it, a filename should not.
+const slug = stamp.replace(/[^0-9A-Za-z.-]+/g, '-')
+
+console.log(`→ build ${stamp}`)
 console.log('→ building the single-file web app')
-run('npm', ['run', 'build:single', '-w', '@weekspan/web'])
+run('npm', ['run', 'build:single', '-w', '@weekspan/web'], root, { WEEKSPAN_BUILD: stamp })
 
 console.log('→ building the CLI bundle')
 run('npm', ['run', 'build', '-w', '@weekspan/cli'])
@@ -53,85 +76,100 @@ for (const [label, path] of [['web', webSrc], ['cli', cliSrc]]) {
 
 rmSync(out, { recursive: true, force: true })
 mkdirSync(out, { recursive: true })
-cpSync(webSrc, join(out, 'weekspan.html'))
-cpSync(cliSrc, join(out, 'weekspan-cli.mjs'))
 
-// `init` writes a JSON Schema and the agent-facing AGENTS.md / CLAUDE.md beside
-// a new ledger, and it finds all three by walking RELATIVE to its own file. The
-// bundle leaves the workspace, so those walks fail and `init` degrades to a
-// bare ledger with a warning. Shipping the sidecars beside the bundle is what
-// keeps the packaged CLI equal to the one in the repo.
-cpSync(join(root, 'packages/weekspan-core/weekspan.schema.json'), join(out, 'weekspan.schema.json'))
-cpSync(join(root, 'packages/cli/templates'), join(out, 'templates'), { recursive: true })
+const payload = join(out, `weekspan-${slug}`)
+mkdirSync(payload)
 
-// Written into the artifact, not just the repo: in six months this folder may be
-// all that is left of the context, and it has to explain itself without one.
+cpSync(webSrc, join(payload, 'weekspan.html'))
+cpSync(cliSrc, join(payload, 'weekspan-cli.mjs'))
+
+// `init` finds the schema and the AGENTS.md / CLAUDE.md templates by walking
+// relative to its own file. esbuild collapses the CLI to a single file that then
+// leaves the workspace entirely, so without these sidecars `init` on a fresh
+// machine silently produces a bare ledger and a warning.
+cpSync(join(root, 'packages/weekspan-core/weekspan.schema.json'), join(payload, 'weekspan.schema.json'))
+cpSync(join(root, 'packages/cli/templates'), join(payload, 'templates'), { recursive: true })
+
+cpSync(join(root, 'scripts/install.sh'), join(payload, 'install.sh'))
+chmodSync(join(payload, 'install.sh'), 0o755)
+
+writeFileSync(join(payload, 'VERSION'), `${stamp}\n`)
+
 writeFileSync(
-  join(out, 'READ-ME-FIRST.txt'),
-  `weekspan
-========
+  join(payload, 'READ-ME-FIRST.txt'),
+  `weekspan — build ${stamp}
 
-weekspan.html
--------------
-The whole app, in one file. Nothing to install.
+INSTALL (or update)
+-------------------
+From inside this folder:
 
-  1. Save it somewhere permanent (NOT Downloads — see below).
-  2. Open it in Chrome or Edge. Firefox and Safari will not work: the app
-     uses the File System Access API to read and write your ledger file
-     directly, and only Chromium browsers implement it.
-  3. Click to open (or create) your .weekspan.json ledger file.
+    ./install.sh
 
-The browser remembers which file you picked, so subsequent opens go straight
-back to it. That permission is tied to the file's LOCATION, so moving the
-HTML file or the ledger after the fact means re-granting it — hence "save it
-somewhere permanent".
+Installs to ~/weekspan. Safe to run over an existing install: it replaces the
+app and NEVER touches ~/weekspan/ledger. If an update goes wrong:
 
-Your data lives in the .weekspan.json file you choose, never inside this HTML
-file and never on a server. Back that up, not this.
+    ./install.sh --rollback
 
-One external request: the page pulls IBM Plex from fonts.googleapis.com. If a
-corporate proxy blocks it, the app still works — it falls back to the system
-sans-serif and nothing else changes. No app code or data is fetched remotely.
+Then open ~/weekspan/weekspan.html in Chrome or Edge. Firefox and Safari will
+not work — the app reads and writes your ledger through the File System Access
+API, which only Chromium browsers implement.
 
-weekspan-cli.mjs
-----------------
-Optional. The command-line client, for scripting and for AI agents. Needs
-Node 18 or newer.
+The build stamp is in the app's footer, bottom right. Check it after an update
+to confirm you are looking at the new one.
 
-  node weekspan-cli.mjs status
-  node weekspan-cli.mjs add "call the plumber" --due thu
-  node weekspan-cli.mjs --help
+WHAT'S IN HERE
+--------------
+weekspan.html        the whole app, one file, nothing to install
+weekspan-cli.mjs     optional CLI for scripting and AI agents (needs Node 18+)
+weekspan.schema.json \\ written beside a new ledger by \`init\`
+templates/           /
+install.sh           what you just ran
+VERSION              ${stamp}
 
-Point it at a ledger with --weekspan <path>, or set WEEKSPAN_FILE.
+YOUR DATA
+---------
+Lives in ~/weekspan/ledger/*.weekspan.json — never inside the app, never on a
+server. Back that folder up; the app is disposable and re-downloadable.
 
-Both clients read and write the same file format and can be used against the
-same ledger.
+There is NO SYNC between machines. Two machines editing their own copy of a
+ledger will diverge. Keep separate ledgers per machine unless you have set up
+sync deliberately.
+
+THE CLI
+-------
+    node ~/weekspan/weekspan-cli.mjs status --weekspan ~/weekspan/ledger/personal.weekspan.json
+
+Set WEEKSPAN_FILE in your shell profile to skip the --weekspan flag every time.
+
+OFFLINE / LOCKED-DOWN NETWORKS
+------------------------------
+One external request: IBM Plex from fonts.googleapis.com. If a proxy blocks it
+you lose the typeface and nothing else — no app code or data is fetched
+remotely.
 `,
 )
 
-const files = [
-  'weekspan.html',
-  'weekspan-cli.mjs',
-  'READ-ME-FIRST.txt',
-  'weekspan.schema.json',
-  'templates',
-]
+const zipName = `weekspan-${slug}.zip`
 let zipped = false
 try {
-  // `zip` ships with macOS and most Linux. Failing to zip is not fatal — the
-  // loose files are still a perfectly good artifact — so this degrades to a
-  // warning rather than taking the whole release down with it.
-  // No -j: `templates/` must keep its directory, since that is where `init`
-  // looks for it.
-  run('zip', ['-q', '-r', 'weekspan-release.zip', ...files], out)
+  // -r, not -j: install.sh looks for templates/ as a directory beside itself,
+  // and the payload folder is what the user unzips into.
+  run('zip', ['-q', '-r', zipName, `weekspan-${slug}`], out)
   zipped = true
 } catch {
-  console.warn('  (could not run `zip` — sending the loose files works just as well)')
+  console.warn('  (no `zip` on PATH — send the dist-release folder instead)')
 }
 
-console.log('\nReady in dist-release/')
-console.log(`  weekspan.html      ${kb(join(out, 'weekspan.html'))}  ← the app; this is all you need`)
-console.log(`  weekspan-cli.mjs   ${kb(join(out, 'weekspan-cli.mjs'))}  ← optional CLI (needs Node 18+)`)
-console.log('  READ-ME-FIRST.txt')
-if (zipped) console.log(`  weekspan-release.zip ${kb(join(out, 'weekspan-release.zip'))}  ← send this if .html is blocked`)
-console.log('\nSend it to yourself, save it somewhere permanent, open it in Chrome or Edge.')
+console.log('')
+if (zipped) {
+  console.log(`  dist-release/${zipName}   ${kb(join(out, zipName))}`)
+} else {
+  console.log(`  dist-release/weekspan-${slug}/`)
+}
+console.log(`  build ${stamp}`)
+if (stamp.includes('-dirty')) {
+  console.log('  NOTE: built from a dirty tree — commit first if you want this build reproducible.')
+}
+console.log('')
+console.log(`  Next:  send yourself dist-release/${zipName}`)
+console.log('         on the other machine: unzip it, cd into the folder, ./install.sh')

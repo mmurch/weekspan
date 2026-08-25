@@ -13,6 +13,9 @@ export function ShortcutBar({ count }: { count: number }): JSX.Element {
       <span>⌥←→ move due</span>
       <span>N new</span>
       <span className="ws-foot-spacer">{count} items</span>
+      {/* Which build is this? Unanswerable otherwise — the app travels between
+          machines as a copied file, and two builds look identical. */}
+      <span className="ws-foot-build" title="build">{__WEEKSPAN_BUILD__}</span>
     </div>
   )
 }

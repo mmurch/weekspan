@@ -80,34 +80,72 @@ so any agent pointed at that folder learns the rules without being told.
 ## Moving it to another machine
 
 The web app builds to **one self-contained HTML file**. Nothing to install on the receiving
-machine — no Node, no repo, no server.
+machine — no Node, no repo, no server. The repo is a prerequisite for *changing* weekspan, not
+for *using* it.
+
+### The loop
+
+Three steps, and each one prints the next.
+
+**1. Here — build the zip:**
 
 ```bash
 npm run release
 ```
 
-Produces `dist-release/`:
+→ `dist-release/weekspan-2026-08-25-a94c87b.zip` (~108KB). Named for its build stamp.
 
-| file | what it is |
-| --- | --- |
-| `weekspan.html` | the whole app, ~260KB — this is all you need |
-| `weekspan-cli.mjs` | the CLI, bundled (needs Node 18+) |
-| `weekspan.schema.json`, `templates/` | sidecars `init` writes beside a new ledger |
-| `READ-ME-FIRST.txt` | instructions, so the folder explains itself later |
-| `weekspan-release.zip` | all of the above, for when `.html` attachments get blocked |
+**2. Slack or email it to yourself.**
 
-Send yourself `weekspan.html` (or the zip if your mail/Slack filter eats HTML), save it
-somewhere permanent, and open it in **Chrome or Edge** — the ledger is read and written through
-the File System Access API, which Firefox and Safari do not implement.
+**3. There — unzip and run the installer that came with it:**
 
-Want the repo on the other machine too, for development or the CLI? Copy it over and ask Claude
-or Cursor to run the **`weekspan-setup`** skill (`.claude/skills/weekspan-setup/`); it checks
-Node, installs, runs the full verify, and builds the release for you.
+```bash
+unzip weekspan-*.zip && cd weekspan-*/ && ./install.sh
+```
 
-**There is no sync.** The ledger is a file; two machines editing their own copy will diverge.
-`weekspan-core` has a real three-way merge, but nothing runs it across machines automatically.
-See [docs/google-drive-sync.md](docs/google-drive-sync.md) before relying on one ledger in two
-places.
+→ installs to `~/weekspan/`. Open `~/weekspan/weekspan.html` in **Chrome or Edge** (Firefox and
+Safari can't write the ledger — no File System Access API).
+
+That's it. Repeat all three whenever you want to push an update; nothing differs on the second
+run or the fiftieth.
+
+### What makes it safe to repeat
+
+- **Your ledger is never touched.** The installer owns a fixed list of app files and writes
+  only those. `~/weekspan/ledger/` — and anything else you put there — is left alone. There is
+  no `rm -rf` of the destination anywhere in the script, deliberately.
+- **The build stamp is in the app's footer**, bottom right, matching the zip name and
+  `~/weekspan/VERSION`. After an update, glance at it to confirm the new build actually landed —
+  otherwise two builds look identical and you're guessing.
+- **One version back is kept.** If an update breaks something: `./install.sh --rollback`.
+- **The installer ships inside the zip**, so there's nothing to have already installed and
+  nothing to remember on the other machine.
+
+Install somewhere else with `WEEKSPAN_HOME=/some/path ./install.sh`.
+
+### The CLI
+
+The zip includes it. Needs Node 18+; the app itself needs nothing.
+
+```bash
+node ~/weekspan/weekspan-cli.mjs status --weekspan ~/weekspan/ledger/personal.weekspan.json
+```
+
+Set `WEEKSPAN_FILE` in your shell profile to drop the flag. The installer creates a starter
+ledger on first install if Node is available and you don't already have one.
+
+### Developing on the other machine
+
+Only if you want to change the code. Copy the repo over and ask Claude or Cursor to run the
+**`weekspan-setup`** skill (`.claude/skills/weekspan-setup/`) — it checks Node, installs, runs
+the full verify, and builds a release.
+
+### There is no sync
+
+The ledger is a file; two machines editing their own copy will diverge. `weekspan-core` has a
+real three-way merge, but nothing runs it across machines automatically. Keep a separate ledger
+per machine unless you have deliberately set up sync — see
+[docs/google-drive-sync.md](docs/google-drive-sync.md).
 
 ## Status
 

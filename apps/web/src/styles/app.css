@@ -249,6 +249,13 @@ body {
 .ws-topbar { flex: none; }
 .ws-foot { flex: none; }
 
+/* Present but recessive: you look for it when updating, never otherwise. */
+.ws-foot-build {
+  font: 400 9.5px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-4);
+  margin-left: 10px;
+}
+
 /* ---- zoom picker ----------------------------------------------------- */
 
 .ws-zoom {

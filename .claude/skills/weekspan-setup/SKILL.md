@@ -9,12 +9,20 @@ Get from "the repo is on disk" to "the app opens and the CLI runs". Takes about 
 
 ## First: does this person actually need the repo?
 
-Ask before installing anything. **Using** weekspan needs no repo, no Node, and no install —
-`apps/web` builds to one self-contained HTML file that runs from `file://`. If they only want
-to track tasks on this machine, they need `weekspan.html` and nothing else. Point them at
-`npm run release` on the machine that HAS the repo, and stop here.
+Ask before installing anything. **Using** weekspan needs no repo, no Node, and no install.
 
-Run the rest of this only if they want to change the code, run the CLI, or rebuild.
+If they just want to run the app on this machine, the answer is not this skill — it is the
+release zip, which carries its own installer:
+
+```bash
+unzip weekspan-*.zip && cd weekspan-*/ && ./install.sh
+```
+
+That installs to `~/weekspan/`, leaves any existing `~/weekspan/ledger/` untouched, and is safe
+to re-run for every future update. They build the zip with `npm run release` on the machine that
+HAS the repo. Point them there and stop.
+
+Run the rest of this only if they want to change the code or build releases here.
 
 ## 1. Check Node
 
@@ -53,37 +61,46 @@ npx playwright install chromium
 Report the actual failure if anything else breaks. Do not paper over a red verify — a fresh
 clone that does not pass is information the user needs, not noise to suppress.
 
-## 4. Build what they'll use
+## 4. Build a release
 
 ```bash
 npm run release
 ```
 
-Produces `dist-release/`:
+Produces `dist-release/weekspan-<build>.zip` — the app, the CLI, the sidecars `init` needs, and
+`install.sh`. That zip is the unit of distribution: send it anywhere, unzip, run `./install.sh`.
 
-- `weekspan.html` — the whole app in one file
-- `weekspan-cli.mjs` — the CLI bundle
-- `READ-ME-FIRST.txt`
+The build stamp (date + short SHA) goes into the zip name, the `VERSION` file, and the app's
+own footer, so all three agree about which build is which.
 
 ## 5. Hand it over
 
-**The app.** Open `dist-release/weekspan.html` in **Chrome or Edge**. Not Firefox, not
-Safari — the app writes the ledger through the File System Access API, which only Chromium
-browsers implement. Tell them to save the file somewhere permanent first: the browser ties its
-remembered file permission to a location, so moving it later means re-granting access.
-
-**The CLI.** Either run the bundle directly, or link the workspace package:
+**The app.** Run the installer from the release they just built:
 
 ```bash
-node dist-release/weekspan-cli.mjs status
-# or, for a `weekspan` command on PATH:
+cd dist-release/weekspan-*/ && ./install.sh
+```
+
+Then open `~/weekspan/weekspan.html` in **Chrome or Edge**. Not Firefox, not Safari — the app
+writes the ledger through the File System Access API, which only Chromium browsers implement.
+
+Installing rather than opening the file in place matters: the browser ties its remembered file
+permission to a location, and `dist-release/` is wiped on every build.
+
+**The CLI.** The installer put it beside the app. Either run it directly, or link the
+workspace package for a `weekspan` command on PATH:
+
+```bash
+node ~/weekspan/weekspan-cli.mjs status --weekspan ~/weekspan/ledger/personal.weekspan.json
+# or:
 npm run build -w @weekspan/cli && npm link -w @weekspan/cli
 ```
 
-**A ledger to point at.** If they don't have one yet:
+**A ledger to point at.** `install.sh` creates `~/weekspan/ledger/personal.weekspan.json` on a
+first install when Node is present. To make another one:
 
 ```bash
-node dist-release/weekspan-cli.mjs init --weekspan ~/todo/personal.weekspan.json
+node ~/weekspan/weekspan-cli.mjs init --weekspan ~/weekspan/ledger/work.weekspan.json
 ```
 
 `init` also writes `AGENTS.md`, `CLAUDE.md` and `weekspan.schema.json` beside the file, so any
@@ -111,5 +128,9 @@ ledger in two places, ask what their sync story is before they start relying on 
   then cannot open a file. The console says so.
 - **App can't reopen the last file** — expected after moving either the HTML or the ledger.
   Re-pick the file.
+- **An update doesn't seem to have applied** — check the build stamp in the app's footer
+  against `cat ~/weekspan/VERSION`. If they disagree, the open tab is stale; hard-reload it.
+- **An update broke something** — `./install.sh --rollback` from the unzipped folder restores
+  the previous build. The ledger is untouched either way.
 - **Fonts look wrong** — the page pulls IBM Plex from `fonts.googleapis.com`. A proxy blocking
   it costs the typeface and nothing else; the app is fully functional on system fonts.

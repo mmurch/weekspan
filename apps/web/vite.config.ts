@@ -17,5 +17,9 @@ import react from '@vitejs/plugin-react'
  */
 export default defineConfig({
   plugins: [react()],
+  // The single-file build replaces this with a real date + SHA (see
+  // scripts/build-singlefile.mjs). Dev says so plainly rather than lying about
+  // a version, and the symbol always exists so the footer never reads undefined.
+  define: { __WEEKSPAN_BUILD__: JSON.stringify('dev') },
   test: { globals: true, include: ['src/**/*.test.ts', 'src/**/*.test.tsx'] },
 })
