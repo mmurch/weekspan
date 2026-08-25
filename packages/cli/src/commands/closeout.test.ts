@@ -128,6 +128,11 @@ describe('a week blocked only by a generated recurring occurrence', () => {
     const l = onDisk()
     const item = l.items.find((i) => i.id === id)!
     item.recurrence = { freq: 'weekly', weekday: 4, anchor: '2026-07-01' } // Thursdays
+    // closedThrough W33 so W34 is the oldest unclosed week. A ledger with no
+    // history at all now starts its window at the CURRENT week, which would
+    // make close-out refuse W35 as "the current week" and never reach the
+    // recurring-occurrence message this test is about.
+    l.closedThrough = '2026-W33'
     writeWeekspan(l)
 
     const before = readFileSync(weekspanPath, 'utf8')
@@ -191,6 +196,12 @@ describe('a finished item whose latest mark falls in a later week', () => {
     // (2026-08-23). Finished, but not archivable when closing W34.
     await runCellCommand(ctx([id, '2026-08-25']), 'done', capture().out)
 
+    // W34 must be the oldest unclosed week for this to be a test about
+    // archivability rather than about which week close-out picks.
+    const seed = onDisk()
+    seed.closedThrough = '2026-W33'
+    writeWeekspan(seed)
+
     const code = await runCloseOut(ctx([]), capture().out)
     expect(code).toBe(EXIT.OK)
 
@@ -212,6 +223,11 @@ describe('a recurring item', () => {
     const l = onDisk()
     const item = l.items.find((i) => i.id === id)!
     item.recurrence = { freq: 'weekly', weekday: 4, anchor: '2026-07-01' } // Thursdays
+    // closedThrough W33 so W34 is the oldest unclosed week. A ledger with no
+    // history at all now starts its window at the CURRENT week, which would
+    // make close-out refuse W35 as "the current week" and never reach the
+    // recurring-occurrence message this test is about.
+    l.closedThrough = '2026-W33'
     writeWeekspan(l)
 
     // Resolve the one generated occurrence inside W34 (2026-08-20, Thursday)

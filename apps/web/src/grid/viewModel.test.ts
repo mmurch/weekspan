@@ -7,10 +7,14 @@ import { demoWeekspan, emptyWeekspan, wrappingWeekspan } from './fixtures.js'
 const today: IsoDate = '2026-08-26' // Wednesday, 2026-W35
 
 describe('buildGrid — window sizing', () => {
-  it('yields exactly 4 week blocks when caught up (fresh weekspan, closedThrough null)', () => {
+  it('yields exactly 4 week blocks when caught up, starting at the CURRENT week', () => {
+    // A brand-new weekspan has no history, so there is no past week to show and
+    // none to close. It used to open on an empty, uncloseable last week — the
+    // grid looked behind before anything had been entered.
     const grid = buildGrid(emptyWeekspan(today), today)
     expect(grid.weeks).toHaveLength(4)
-    expect(grid.weeks.map((w) => w.week)).toEqual(['2026-W34', '2026-W35', '2026-W36', '2026-W37'])
+    expect(grid.weeks.map((w) => w.week)).toEqual(['2026-W35', '2026-W36', '2026-W37', '2026-W38'])
+    expect(grid.weeks.some((w) => w.isPast)).toBe(false)
   })
 
   it('yields more than 4 week blocks when behind on close-out', () => {

@@ -34,6 +34,82 @@ export function groupFor(rows: readonly RowVM[], id: string): string[] {
   return group
 }
 
+/** The nearest preceding depth-0 row — a child's parent, by adjacency. */
+export function parentIdOf(rows: readonly RowVM[], id: string): string | null {
+  const idx = rows.findIndex((r) => r.id === id)
+  if (idx === -1 || rows[idx]!.depth === 0) return null
+  for (let i = idx - 1; i >= 0; i--) {
+    if (rows[i]!.depth === 0) return rows[i]!.id
+  }
+  return null
+}
+
+/**
+ * Indices (in REST space — the list with the dragged group removed) where this
+ * row is actually allowed to land.
+ *
+ * This is the fix for a drag that previewed a move and then silently did
+ * nothing on release. `commitNeighbours` only accepts SIBLING neighbours, but
+ * nothing stopped the preview from carrying a row past them: a child dragged
+ * out of its parent's run resolved to `before = null, after = null`,
+ * `minimalMoveRank` saw no constraint left to satisfy, returned null, and the
+ * write never happened. The row snapped back with no explanation. It failed for
+ * 100% of nested rows and 0% of roots, which is why it read as intermittent.
+ *
+ * Rather than teach the commit to accept more, the preview is taught to promise
+ * less — this module's own principle is that the preview IS the answer, so a
+ * position it will not commit is a position it must not show.
+ *
+ *   - A CHILD may only land between its own siblings. Ranks are sibling-scoped
+ *     and this drag deliberately cannot reparent.
+ *   - A ROOT may only land where a root may begin. Dropping one into the middle
+ *     of another root's children previewed a nesting that the commit — which
+ *     skips over children to find root neighbours — was never going to honour.
+ */
+export function validIndices(rows: readonly RowVM[], draggingId: string): number[] {
+  const idx = rows.findIndex((r) => r.id === draggingId)
+  if (idx === -1) return []
+  const row = rows[idx]!
+  const group = new Set(groupFor(rows, draggingId))
+  const rest = rows.filter((r) => !group.has(r.id))
+
+  if (row.depth === 0) {
+    // Every slot that starts a root, plus the very end.
+    const out: number[] = []
+    for (let i = 0; i < rest.length; i++) if (rest[i]!.depth === 0) out.push(i)
+    out.push(rest.length)
+    return out
+  }
+
+  const parentId = parentIdOf(rows, draggingId)
+  const p = parentId === null ? -1 : rest.findIndex((r) => r.id === parentId)
+  // An orphan child (no parent found) has no valid sibling scope; leaving it
+  // where it is beats inventing one.
+  if (p === -1) {
+    const at = rest.findIndex((r) => r.id === draggingId)
+    return at >= 0 ? [at] : []
+  }
+
+  const out: number[] = []
+  let i = p + 1
+  out.push(i)
+  while (i < rest.length && rest[i]!.depth === 1) {
+    i++
+    out.push(i)
+  }
+  return out
+}
+
+/** Snap to the nearest allowed index, so the row visibly refuses invalid slots. */
+function snap(valid: readonly number[], index: number): number {
+  if (valid.length === 0) return index
+  let best = valid[0]!
+  for (const v of valid) {
+    if (Math.abs(v - index) < Math.abs(best - index)) best = v
+  }
+  return best
+}
+
 /**
  * Where the dragged group would sit, given the pointer.
  *
@@ -58,7 +134,7 @@ export function previewIndexFor(
     if (pointerY > box.top + box.height / 2) index++
     else break
   }
-  return index
+  return snap(validIndices(rows, draggingId), index)
 }
 
 /**
@@ -75,7 +151,7 @@ export function previewRows(
   const groupSet = new Set(group)
   const moving = rows.filter((r) => groupSet.has(r.id))
   const rest = rows.filter((r) => !groupSet.has(r.id))
-  const clamped = Math.max(0, Math.min(index, rest.length))
+  const clamped = snap(validIndices(rows, draggingId), Math.max(0, Math.min(index, rest.length)))
   return [...rest.slice(0, clamped), ...moving, ...rest.slice(clamped)]
 }
 

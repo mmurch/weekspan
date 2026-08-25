@@ -18,7 +18,7 @@ import { MemoryStore, type FileStore } from './store/FileStore.js'
 import { FileSystemStore } from './store/FileSystemStore.js'
 import { FilePicker } from './store/FilePicker.js'
 import { useWeekspan } from './store/useWeekspan.js'
-import { serialize } from '@weekspan/weekspan-core'
+import { serialize, sortByDate } from '@weekspan/weekspan-core'
 import { resolveKey, applyAction } from './interaction/keymap.js'
 import { reconcileSelection, selectionFromCell, type Selection } from './interaction/selection.js'
 import { CellMenu } from './interaction/CellMenu.js'
@@ -362,6 +362,18 @@ function Workspace({
               if (result.weekspan) void mutate(() => result.weekspan)
             }}
             onCloseOut={() => setCloseOutOpen(true)}
+            onSortByDate={() => {
+              void mutate((w) => {
+                const sorted = sortByDate(w, today)
+                // null means already in order — `mutate` writes nothing, so a
+                // second press leaves no diff in a synced file.
+                if (!sorted) {
+                  say('Already sorted by date.')
+                  return null
+                }
+                return sorted
+              })
+            }}
             gripHandlers={gripHandlers}
             previewRows={
               view === 'project'

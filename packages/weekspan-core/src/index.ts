@@ -106,6 +106,8 @@ export {
   rowStyle,
 } from './derived.js'
 
+export { sortByDate, sortKeyFor } from './sortByDate.js'
+
 export type { WeekWindow, WindowWeek } from './window.js'
 export {
   computeWindow,

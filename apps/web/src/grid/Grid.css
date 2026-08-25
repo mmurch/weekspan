@@ -42,11 +42,47 @@
   z-index: 5;
   display: flex;
   align-items: flex-end;
-  padding: 0 12px 6px 32px;
+  /* `gap` would sit the button right against the label; pushing it to the far
+     end keeps the header reading as a label with an affordance, not a toolbar. */
+  justify-content: space-between;
+  padding: 0 10px 5px 32px;
   font: 600 9px/1.4 'IBM Plex Mono', monospace;
   letter-spacing: 0.08em;
   color: var(--ws-ink-3);
   background: var(--ws-subtle);
+}
+
+/*
+ * Sort-by-date. Recessive until pointed at: it reorders the whole list, so it
+ * should be findable but never look like the thing to press on arrival.
+ */
+.ws-head-sort {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-bottom: -3px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-2);
+  background: transparent;
+  color: var(--ws-ink-3);
+  cursor: pointer;
+}
+
+.ws-head-sort:hover {
+  border-color: var(--ws-hair-strong);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+}
+
+.ws-head-sort:active {
+  background: var(--ws-hair);
+}
+
+.ws-head-sort:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 1px;
 }
 
 .ws-head-weeklabel {

@@ -84,10 +84,16 @@ async function statusJson(): Promise<StatusJson> {
 describe('today, current week, and window range', () => {
   it('reports all three', async () => {
     await init()
+    // One resolved mark last week, so there is genuinely a past week to report.
+    // A ledger with no history at all now starts its window at the CURRENT week
+    // (see oldestUnclosedWeek) — covered by the next test.
+    const l = onDisk()
+    l.items = [{ id: 'x', title: 'x', rank: 'aV', marks: { '2026-08-19': { kind: 'done' } } }]
+    writeDisk(l)
+
     const data = await statusJson()
     expect(data.today).toBe(TODAY)
     expect(data.currentWeek).toBe('2026-W35')
-    // closedThrough is null -> window starts at currentWeek - 1.
     expect(data.window.from).toBe('2026-W34')
     expect(data.window.to).toBe('2026-W37')
 
@@ -155,9 +161,27 @@ describe('blockers are split by kind', () => {
   })
 })
 
+describe('a brand-new ledger', () => {
+  it('starts at the current week rather than claiming last week is unclosed', async () => {
+    // `init` used to leave a fresh ledger reporting an empty, uncloseable last
+    // week — the CLI said you were behind before you had added anything.
+    await init()
+    const data = await statusJson()
+    expect(data.window.from).toBe('2026-W35')
+    expect(data.oldestUnclosedWeek).toBe('2026-W35')
+    expect(data.closeable).toBe(false)
+  })
+})
+
 describe('a closeable past week', () => {
   it('says so, with no blockers', async () => {
     await init()
+    // A past week is only in the window once something happened in it. A done
+    // mark last week is both history and fully resolved, so W34 is closeable.
+    const l = onDisk()
+    l.items = [{ id: 'x', title: 'x', rank: 'aV', marks: { '2026-08-19': { kind: 'done' } } }]
+    writeDisk(l)
+
     const data = await statusJson()
     expect(data.oldestUnclosedWeek).toBe('2026-W34')
     expect(data.closeable).toBe(true)

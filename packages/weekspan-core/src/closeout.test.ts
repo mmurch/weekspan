@@ -293,7 +293,11 @@ describe('blocker reporting stays consistent with closeable', () => {
 
   it('names the real reason when a recurring occurrence blocks a manual close', () => {
     const rule = { freq: 'weekly', weekday: 2, anchor: '2026-01-06' } as const
-    const weekspan = makeWeekspan([makeItem('recurring', {}, rule)], null)
+    // closedThrough W33, not null: a weekspan with no history at all now starts
+    // its window at the CURRENT week (see oldestUnclosedWeek), so W34 would not
+    // be the oldest unclosed week and the sequential-close guard would fire
+    // first — hiding the message this test is actually about.
+    const weekspan = makeWeekspan([makeItem('recurring', {}, rule)], '2026-W33')
     expect(() => closeWeek(weekspan, '2026-W34', TODAY)).toThrow(/generated due/)
   })
 })

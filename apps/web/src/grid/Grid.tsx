@@ -50,6 +50,8 @@ export interface GridInteraction {
    * seam opened a draft that then rendered nowhere.
    */
   draftSlot?: string | null
+  /** The sort-by-date button in the ITEM header. Omit it and no button renders. */
+  onSortByDate?: () => void
   /** Clicking the seam between two rows opens a draft there. */
   onInsertBetween?: (
     afterId: string | null,
@@ -508,7 +510,33 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
 
   return (
     <div className="ws-grid" style={style}>
-      <div className="ws-head-item">ITEM</div>
+      <div className="ws-head-item">
+        <span>ITEM</span>
+        {interaction.onSortByDate ? (
+          <button
+            className="ws-head-sort"
+            type="button"
+            onClick={() => interaction.onSortByDate?.()}
+            title="Sort by date — done, then due, then unscheduled"
+            aria-label="Sort by date"
+          >
+            {/* Two arrows chasing each other round a circle. Drawn as two arcs
+                with their own arrowheads rather than a font glyph, which would
+                not be available offline in the single-file build. */}
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path
+                d="M2.6 6.4a5.6 5.6 0 0 1 9.5-2.2M13.4 9.6a5.6 5.6 0 0 1-9.5 2.2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+              <path d="M12.6 1.2v3.2h-3.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M3.4 14.8v-3.2h3.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
       {vm.weeks.map((week) => (
         <WeekHeader
           week={week}

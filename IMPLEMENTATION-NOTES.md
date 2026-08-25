@@ -746,3 +746,89 @@ Browser-direct Drive is structurally dead, not merely hard: the app ships as a `
 which has a **null origin**, and Google OAuth cannot register a null origin. Hosting the page
 over HTTPS would fix it — and would also make the File System Access API work, which is already
 built and tested, so it buys nothing for real cost.
+
+## Drag reorder reverted on release — 100% of nested rows, not 50% of all rows
+
+Reported as "broken about 50% of the time". A stress probe over both fixtures found the real
+shape: **every drag of a depth-1 child reverted (4/4), every drag of a root committed
+(64/64).** It reads as intermittent because whether it works depends on which row you grabbed,
+not on chance.
+
+`commitNeighbours` only ever accepted SIBLING neighbours, but nothing stopped the PREVIEW from
+carrying a row past them. A child dragged out of its parent's run resolved to
+`before = null, after = null`; `minimalMoveRank` correctly read that as "no constraint left to
+satisfy" and returned null; the write never happened and the row snapped back with no
+explanation.
+
+Fixed by teaching the preview to promise less, not the commit to accept more —
+`dragPreview.ts`'s own principle is that the preview IS the answer, so a position it will not
+commit is a position it must not show. `validIndices` enumerates the legal slots (a child only
+between its own siblings; a root only where a root may begin) and the index snaps to the
+nearest one. The row now visibly refuses an illegal slot instead of following the cursor there
+and silently doing nothing.
+
+The regression test states the invariant directly rather than re-testing the symptom: for every
+row and every index, any previewed order that differs from the current one must yield
+non-null `commitNeighbours`. Post-fix stress: 0 reverts across both fixtures, children 13/13.
+
+*Not a regression from the project-view work* — this predates it. The adapter refactor moved
+the code but not the bug.
+
+## A brand-new weekspan starts at THIS week
+
+`oldestUnclosedWeek` treated `closedThrough: null` as "last week is unclosed", so opening a
+fresh file put an empty, uncloseable past week on screen: the app looked behind before anything
+had been entered.
+
+Now, when `closedThrough` is null AND no explicit mark exists before this week, the left edge
+IS this week. Deliberately narrow:
+
+- **Explicit marks only.** A recurring rule with an old anchor fires through all of history,
+  which would make every new file look like it had a backlog on day one.
+- **A display rule, not a close-out.** `closedThrough` is not written and nothing is archived —
+  which is what "without implementing auto-closeout" required. The moment a mark exists in a
+  past week the edge moves back to include it, which is exactly what happens next week, so the
+  week you just used stays visible and closeable.
+- **Conservative on existing files.** Any file with history behaves as before.
+
+Seven tests across the CLI and web broke, all fixtures that were fresh ledgers standing in for
+"a normal file". Each was given real history rather than having its expectation moved — a
+"closeable past week" with literally nothing in it was a degenerate case worth losing.
+
+## Favicon
+
+`apps/web/favicon.svg` — a calendar with wings (weekspan ~ wingspan). Drawn for 16px first:
+three dots instead of a real calendar face, solid wing silhouettes instead of outlines, short
+binding stubs. A first pass put small wings beside tall rings and read as a beetle at tab size —
+rings as antennae, wings as horns — so the wings moved down to the body's waist and grew.
+
+Colours are literal, not tokens: a favicon is chrome drawn outside the page and cannot see CSS
+custom properties.
+
+**It silently failed to parse at first.** The explanatory comment contained `--ws-active-bg`,
+and a double hyphen is illegal inside an XML comment — the whole file rendered as a broken
+image with no error anywhere except an XML parser message. Token names in that comment are now
+written without their leading dashes, and it says why.
+
+Vite emits an SVG referenced from a `<link>` as a separate asset regardless of
+`assetsInlineLimit`, which would have left the single-file build pointing at an `app.svg` that
+does not travel with it. `build-singlefile.mjs` inlines it as base64 (percent-encoding breaks
+on the `#` colour literals) and now **fails the build on any remaining sibling reference** —
+that class of bug is silent otherwise: a missing icon, an unstyled page, no error.
+
+## Sort-by-date button
+
+`sortByDate` in weekspan-core, button in the ITEM header. Done items first by latest done mark,
+then due items by soonest due mark, then unmarked in existing order. Recurring items are keyed
+from the CURRENT WEEK only — a standing commitment has no meaningful all-time date, and
+generated occurrences run to the horizon in both directions.
+
+Two judgment calls the brief left open, both stated in the source: **ascending in both
+buckets**, and **done keyed by its latest mark while due is keyed by its soonest** ("when did I
+last finish this" and "when must I next act on this" are opposite ends of the same range).
+
+Sorts within rank scopes, so children sort among siblings and nesting survives. Returns null
+when already ordered, so a second press writes nothing.
+
+*Flagged:* unlike a drag, this rewrites every rank in a scope it reorders. Inherent to sorting,
+and the reason it is an explicit button rather than anything automatic.
