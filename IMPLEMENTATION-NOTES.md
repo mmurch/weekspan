@@ -956,3 +956,33 @@ the two dark themes were indistinguishable on the one marker you look at most. N
 `#1c1a17`. Changed in BOTH the `[data-theme="warm"]` block and the `prefers-color-scheme: dark`
 block, since the latter is warm dark serving as the system-dark default and the two must not
 disagree.
+
+## Deleting a project asks what to do with its items
+
+Two readings of "delete this project", doing opposite things to the user's data: retire the
+CATEGORY and keep the work, or clear out the whole batch. `removeProject` already did the first
+and there was no UI reaching it at all, so this adds the affordance and the choice rather than
+changing a default.
+
+- **`removeProject(weekspan, id, mode)`** — `'unassign'` (the default, unchanged behaviour) or
+  `'deleteItems'`. The default keeps the old call sites and the old tests honest, and it is the
+  safe reading: a project is a long-lived label, and dropping the label rarely means the tasks
+  stopped mattering.
+- **`deleteItems` cascades further than the project.** `parentId` and `projectId` are
+  INDEPENDENT axes, so a doomed item can own a child in some other project. Leaving that child
+  behind dangles its `parentId`, which `parse` rejects — so children of deleted items go too,
+  whatever project they were in. That is the one thing this mode removes that the user did not
+  literally name, and it is forced by the file format rather than chosen. There is a test for
+  exactly that case.
+- **`projectDeletionImpact`** exists so the confirmation can count *before* acting, and counts
+  direct items separately from swept-up children. A dialog that says "3 items" and removes 4 is
+  the kind of mismatch people only notice afterwards; a test asserts the predicted total equals
+  what `deleteItems` actually removes.
+
+UI: a `×` on the group header, hidden until the group is hovered (`visibility`, not `display`,
+so hover never reflows the row). Real projects only — the unassigned bucket is not a thing you
+can delete, it is where things go when they belong to nothing. The dialog focuses the SAFE
+option on open, so a stray Enter keeps the work.
+
+*Flagged:* still no UI to RENAME a project, though `renameProject` exists in core — same gap
+this just closed for deletion.

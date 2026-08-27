@@ -665,6 +665,39 @@ button.ws-week-close--blocked {
   background: transparent;
 }
 
+/*
+ * Delete-project button. Hidden until the group is hovered or the button itself
+ * is focused — a rare, destructive action should be findable, not prominent.
+ * `visibility` rather than `display` so it never reflows the divider on hover.
+ */
+.ws-divider-delete {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-2);
+  font: 400 13px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.ws-divider:hover .ws-divider-delete,
+.ws-divider-delete:focus-visible {
+  visibility: visible;
+}
+
+.ws-divider-delete:hover {
+  border-color: var(--ws-hair-strong);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+}
+
 .ws-divider-name {
   font: 600 12px/1 'IBM Plex Sans', sans-serif;
   color: var(--ws-ink);

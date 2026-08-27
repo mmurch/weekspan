@@ -46,8 +46,9 @@ import { commitProjectCapture } from './add/projectCapture.js'
 import { buildProjectView, type ProjectRow } from './grid/projectView.js'
 import { applyProjectDrop, dropFromRows } from './interaction/projectDrag.js'
 import { ProjectColorPicker } from './projects/ProjectColorPicker.js'
+import { ProjectDeleteDialog } from './projects/ProjectDeleteDialog.js'
 import { loadNoProjectColor, saveNoProjectColor } from './projects/noProjectColor.js'
-import { setProjectColor } from '@weekspan/weekspan-core'
+import { projectDeletionImpact, removeProject, setProjectColor } from '@weekspan/weekspan-core'
 import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
 import { closeOutState, performClose } from './closeout/closeoutActions.js'
 import { CloseOutPanel } from './closeout/CloseOutPanel.js'
@@ -225,6 +226,9 @@ function Workspace({
   // Colour of the unassigned bucket. Per-device, NOT in the ledger — see
   // `projects/noProjectColor.ts` for why the file deliberately does not carry it.
   const [noProjectColor, setNoProjectColor] = useState<string | null>(() => loadNoProjectColor())
+
+  /** Project pending deletion, awaiting the keep-or-delete choice. */
+  const [deletingProject, setDeletingProject] = useState<string | null>(null)
 
   const [colorPicker, setColorPicker] = useState<{ projectId: string | null; x: number; y: number } | null>(
     null,
@@ -477,6 +481,7 @@ function Workspace({
             }}
             onCloseOut={() => setCloseOutOpen(true)}
             onAddItem={() => setCaptureOpen(true)}
+            onDeleteProject={(projectId) => setDeletingProject(projectId)}
             onSortByDate={() => {
               void mutate((w) => {
                 const sorted = sortByDate(w, today)
@@ -633,6 +638,36 @@ function Workspace({
       ) : null}
 
       <Notice message={notice} onDismiss={() => setNotice(null)} />
+
+      {deletingProject !== null
+        ? (() => {
+            const project = weekspan.projects.find((p) => p.id === deletingProject)
+            if (!project) return null
+            const impact = projectDeletionImpact(weekspan, deletingProject)
+            return (
+              <ProjectDeleteDialog
+                projectName={project.name}
+                directItems={impact.directItems}
+                orphanedChildren={impact.orphanedChildren}
+                onDismiss={() => setDeletingProject(null)}
+                onConfirm={(mode) => {
+                  const removed =
+                    mode === 'deleteItems'
+                      ? impact.directItems.length + impact.orphanedChildren.length
+                      : 0
+                  void mutate((w) => removeProject(w, deletingProject, mode))
+                  setDeletingProject(null)
+                  say(
+                    mode === 'deleteItems'
+                      ? `Deleted project ${JSON.stringify(project.name)} and ${removed} item(s).`
+                      : `Deleted project ${JSON.stringify(project.name)}; its items kept.`,
+                    mode === 'deleteItems' ? 'warn' : undefined,
+                  )
+                }}
+              />
+            )
+          })()
+        : null}
 
       {colorPicker ? (
         <ProjectColorPicker

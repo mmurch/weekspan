@@ -83,6 +83,7 @@ export {
   assignProject,
   findProjectByName,
   nextProjectColor,
+  projectDeletionImpact,
   removeProject,
   renameProject,
   setProjectColor,
@@ -106,6 +107,7 @@ export {
   rowStyle,
 } from './derived.js'
 
+export type { RemoveProjectMode } from './projects.js'
 export { sortByDate, sortKeyFor } from './sortByDate.js'
 export { defaultInsertAnchor, defaultInsertBeforeId, itemsRemovedBy, removeItem } from './items.js'
 

@@ -52,6 +52,8 @@ export interface GridInteraction {
    * seam opened a draft that then rendered nowhere.
    */
   draftSlot?: string | null
+  /** Delete a project group. Never offered for the unassigned bucket. */
+  onDeleteProject?: (projectId: string) => void
   /** Clicking the add-item row at the foot of the list. Same path as pressing N. */
   onAddItem?: () => void
   /** The sort-by-date button in the ITEM header. Omit it and no button renders. */
@@ -478,6 +480,22 @@ function DividerRow({
       />
       <span className="ws-divider-name">{divider.name}</span>
       <span className="ws-divider-meta">{divider.meta}</span>
+      {/* Real projects only — the unassigned bucket is not a thing you can
+          delete, it is where things go when they belong to nothing.
+          Hover-revealed on purpose: retiring a project is rare, and a
+          permanently visible × beside every group is an accident waiting for a
+          stray click. */}
+      {divider.projectId !== null && interaction.onDeleteProject ? (
+        <button
+          className="ws-divider-delete"
+          type="button"
+          title={`Delete project ${divider.name}`}
+          aria-label={`Delete project ${divider.name}`}
+          onClick={() => interaction.onDeleteProject?.(divider.projectId as string)}
+        >
+          ×
+        </button>
+      ) : null}
     </div>
   )
 }

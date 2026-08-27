@@ -1,4 +1,4 @@
-import type { Project, Weekspan } from './types.js'
+import type { Item, Project, Weekspan } from './types.js'
 
 /**
  * Project mutations.
@@ -198,23 +198,83 @@ export function setProjectColor(weekspan: Weekspan, id: string, colorToken: stri
 }
 
 /**
- * Delete a project and unassign every item that pointed at it (set
- * `projectId` to `null`), in the same pass. This is NOT cosmetic: `parse`
- * enforces referential integrity on `projectId` (see parse.ts) and throws
- * on a dangling reference, so removing a project while leaving its id on
- * items would produce a `Weekspan` that fails to round-trip through
- * `parse(serialize(w))` — a corrupt file, not a stale UI.
+ * What happens to a project's items when the project goes.
+ *
+ * `unassign` is the default and by far the common case: a project is a
+ * long-lived category, and retiring the category rarely means the work in it
+ * stopped mattering. `deleteItems` is the bulk-clearout case — real, but rare
+ * enough that a caller has to ask for it by name rather than reach it by
+ * passing the wrong flag.
+ */
+export type RemoveProjectMode = 'unassign' | 'deleteItems'
+
+/**
+ * Delete a project.
+ *
+ * With `unassign` (the default) every item that pointed at it has `projectId`
+ * set to `null` in the same pass. This is NOT cosmetic: `parse` enforces
+ * referential integrity on `projectId` (see parse.ts) and throws on a dangling
+ * reference, so removing a project while leaving its id on items would produce
+ * a `Weekspan` that fails to round-trip through `parse(serialize(w))` — a
+ * corrupt file, not a stale UI.
+ *
+ * With `deleteItems` those items are removed instead. The cascade then has to
+ * reach further than the project: `parentId` and `projectId` are INDEPENDENT
+ * axes, so a doomed item can own a child that belongs to some other project (or
+ * none). Leaving that child behind would dangle its `parentId`, which `parse`
+ * rejects for the same reason — so children of deleted items go too, whatever
+ * project they were in. That is the one place this mode removes something the
+ * user did not literally name, and it is forced by the file format rather than
+ * chosen.
  *
  * `null` for an unknown project id.
  */
-export function removeProject(weekspan: Weekspan, id: string): Weekspan | null {
+export function removeProject(
+  weekspan: Weekspan,
+  id: string,
+  mode: RemoveProjectMode = 'unassign',
+): Weekspan | null {
   if (!weekspan.projects.some((p) => p.id === id)) return null
 
-  return {
-    ...weekspan,
-    projects: weekspan.projects.filter((p) => p.id !== id),
-    items: weekspan.items.map((item) => (item.projectId === id ? { ...item, projectId: null } : item)),
+  const projects = weekspan.projects.filter((p) => p.id !== id)
+
+  if (mode === 'unassign') {
+    return {
+      ...weekspan,
+      projects,
+      items: weekspan.items.map((item) =>
+        item.projectId === id ? { ...item, projectId: null } : item,
+      ),
+    }
   }
+
+  const doomed = new Set(weekspan.items.filter((i) => i.projectId === id).map((i) => i.id))
+  // One pass: nesting is one level deep by construction (see `Item.parentId`).
+  for (const item of weekspan.items) {
+    if (item.parentId != null && doomed.has(item.parentId)) doomed.add(item.id)
+  }
+
+  return { ...weekspan, projects, items: weekspan.items.filter((i) => !doomed.has(i.id)) }
+}
+
+/**
+ * What `removeProject` would remove, so a caller can say so BEFORE doing it.
+ *
+ * `directItems` are the ones actually in the project; `orphanedChildren` are
+ * sub-items that would be swept up because their parent is going. Counting them
+ * separately matters: a confirmation that says "delete 4 items" when it means 6
+ * is the kind of undercount people only notice afterwards.
+ */
+export function projectDeletionImpact(
+  weekspan: Weekspan,
+  id: string,
+): { directItems: Item[]; orphanedChildren: Item[] } {
+  const directItems = weekspan.items.filter((i) => i.projectId === id)
+  const directIds = new Set(directItems.map((i) => i.id))
+  const orphanedChildren = weekspan.items.filter(
+    (i) => i.parentId != null && directIds.has(i.parentId) && !directIds.has(i.id),
+  )
+  return { directItems, orphanedChildren }
 }
 
 /**
