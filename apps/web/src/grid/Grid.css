@@ -703,6 +703,33 @@ button.ws-week-close--blocked {
   color: var(--ws-ink);
 }
 
+/* Only real projects rename — the unassigned bucket has no name to change. */
+.ws-divider-name--editable {
+  cursor: text;
+  border-radius: var(--ws-radius-2);
+}
+
+.ws-divider-name--editable:hover {
+  box-shadow: 0 0 0 3px var(--ws-hair);
+  background: var(--ws-hair);
+}
+
+/*
+ * The editor inherits the header's own type rather than .ws-title-text's, so
+ * the name does not visibly change size or weight the moment you click it —
+ * the same "editing must not move anything" rule the row heights follow.
+ */
+.ws-divider-name--editing {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+}
+
+.ws-divider-name--editing .ws-inline-edit {
+  font: 600 12px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
 .ws-divider-meta {
   font: 400 9.5px/1 'IBM Plex Mono', monospace;
   color: var(--ws-ink-3);

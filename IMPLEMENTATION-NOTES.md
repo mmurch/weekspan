@@ -986,3 +986,25 @@ option on open, so a stray Enter keeps the work.
 
 *Flagged:* still no UI to RENAME a project, though `renameProject` exists in core — same gap
 this just closed for deletion.
+
+## Projects are renameable
+
+Click the group name to edit it in place, same idiom as an item title. `renameProject` already
+existed in core; this closes the UI gap flagged when project deletion landed.
+
+**The throw happens in the wrong place for a naive try/catch.** `renameProject` is one of the
+two functions in `projects.ts` that throws rather than returning null — blank name, or a
+duplicate (case-insensitive). That throw fires inside `mutate`'s `apply` callback, so a
+`try { void mutate(...) } catch` around the call never sees it. App validates against the
+current weekspan FIRST, purely to produce the message, then writes; the write's own callback
+keeps a second guard for the narrow window where a poll merged in a conflicting name between
+validating and applying, where no write beats an unhandled throw inside the store.
+
+**Blank cancels; it does not delete.** Deliberately unlike an item title, where blanking now
+deletes. Deleting a project is the thing that just got a two-way confirmation because the
+consequence is ambiguous and unrecoverable — reaching it by accidentally clearing a field would
+undo all of that care.
+
+The editor inherits the header's own 600/12px type rather than `.ws-title-text`'s, so the name
+does not change size or weight the moment you click it. Measured: divider height 29px before
+and during editing — the same "editing must not move anything" rule the row heights follow.

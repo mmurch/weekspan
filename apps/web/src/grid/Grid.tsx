@@ -54,6 +54,13 @@ export interface GridInteraction {
   draftSlot?: string | null
   /** Delete a project group. Never offered for the unassigned bucket. */
   onDeleteProject?: (projectId: string) => void
+  /** Project whose name is currently being edited in its group header. */
+  editingProjectId?: string | null
+  /** Click the group name to rename. Never offered for the unassigned bucket. */
+  onStartRenameProject?: (projectId: string) => void
+  /** Commit a rename. The caller reports a blank or duplicate name; this never validates. */
+  onCommitRenameProject?: (name: string) => void
+  onCancelRenameProject?: () => void
   /** Clicking the add-item row at the foot of the list. Same path as pressing N. */
   onAddItem?: () => void
   /** The sort-by-date button in the ITEM header. Omit it and no button renders. */
@@ -478,7 +485,28 @@ function DividerRow({
         aria-label={`Change colour for ${divider.name}`}
         onClick={(e) => interaction.onPickColor?.(divider.projectId, e.clientX, e.clientY)}
       />
-      <span className="ws-divider-name">{divider.name}</span>
+      {divider.projectId !== null && interaction.editingProjectId === divider.projectId ? (
+        <span className="ws-divider-name ws-divider-name--editing">
+          <InlineEdit
+            initial={divider.name}
+            placeholder="Project name…"
+            onCommit={(t) => interaction.onCommitRenameProject?.(t)}
+            onCancel={() => interaction.onCancelRenameProject?.()}
+          />
+        </span>
+      ) : (
+        <span
+          className={`ws-divider-name${divider.projectId !== null ? ' ws-divider-name--editable' : ''}`}
+          {...(divider.projectId !== null && interaction.onStartRenameProject
+            ? {
+                onClick: () => interaction.onStartRenameProject?.(divider.projectId as string),
+                title: 'Click to rename',
+              }
+            : {})}
+        >
+          {divider.name}
+        </span>
+      )}
       <span className="ws-divider-meta">{divider.meta}</span>
       {/* Real projects only — the unassigned bucket is not a thing you can
           delete, it is where things go when they belong to nothing.

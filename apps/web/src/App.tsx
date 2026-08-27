@@ -48,7 +48,7 @@ import { applyProjectDrop, dropFromRows } from './interaction/projectDrag.js'
 import { ProjectColorPicker } from './projects/ProjectColorPicker.js'
 import { ProjectDeleteDialog } from './projects/ProjectDeleteDialog.js'
 import { loadNoProjectColor, saveNoProjectColor } from './projects/noProjectColor.js'
-import { projectDeletionImpact, removeProject, setProjectColor } from '@weekspan/weekspan-core'
+import { projectDeletionImpact, removeProject, renameProject, setProjectColor } from '@weekspan/weekspan-core'
 import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
 import { closeOutState, performClose } from './closeout/closeoutActions.js'
 import { CloseOutPanel } from './closeout/CloseOutPanel.js'
@@ -229,6 +229,8 @@ function Workspace({
 
   /** Project pending deletion, awaiting the keep-or-delete choice. */
   const [deletingProject, setDeletingProject] = useState<string | null>(null)
+  /** Project whose name is being edited in its group header. */
+  const [renamingProject, setRenamingProject] = useState<string | null>(null)
 
   const [colorPicker, setColorPicker] = useState<{ projectId: string | null; x: number; y: number } | null>(
     null,
@@ -482,6 +484,36 @@ function Workspace({
             onCloseOut={() => setCloseOutOpen(true)}
             onAddItem={() => setCaptureOpen(true)}
             onDeleteProject={(projectId) => setDeletingProject(projectId)}
+            editingProjectId={renamingProject}
+            onStartRenameProject={(projectId) => setRenamingProject(projectId)}
+            onCancelRenameProject={() => setRenamingProject(null)}
+            onCommitRenameProject={(name) => {
+              const id = renamingProject
+              setRenamingProject(null)
+              if (id === null) return
+              // renameProject THROWS on a blank or duplicate name (one of the
+              // two functions in projects.ts that does). The throw happens
+              // inside `mutate`'s apply callback, where a try/catch around
+              // `mutate` would never see it — so validate against the current
+              // weekspan FIRST, purely to get the message, then write.
+              try {
+                renameProject(weekspan, id, name)
+              } catch (e) {
+                say(e instanceof Error ? e.message : 'Could not rename that project.', 'warn')
+                return
+              }
+              void mutate((w) => {
+                // Re-run against the freshest state, the way every other write
+                // does. The guard is for the narrow window where a poll merged
+                // in a conflicting name between validating and applying: no
+                // write beats an unhandled throw inside the store.
+                try {
+                  return renameProject(w, id, name)
+                } catch {
+                  return null
+                }
+              })
+            }}
             onSortByDate={() => {
               void mutate((w) => {
                 const sorted = sortByDate(w, today)
