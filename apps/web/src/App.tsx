@@ -23,6 +23,7 @@ import { LedgerMenu } from './store/LedgerMenu.js'
 import { useWeekspan } from './store/useWeekspan.js'
 import { defaultInsertAnchor, itemsRemovedBy, serialize, sortByDate } from '@weekspan/weekspan-core'
 import { resolveKey, applyAction } from './interaction/keymap.js'
+import { isTypingTarget } from './interaction/isTypingTarget.js'
 import { reconcileSelection, selectionFromCell, type Selection } from './interaction/selection.js'
 import { CellMenu } from './interaction/CellMenu.js'
 import { priorityAdapter, projectAdapter, useDragPreview } from './interaction/useDragPreview.js'
@@ -124,9 +125,25 @@ export function App(): JSX.Element {
    * what the screenshot harness and any quick look use, and it means the whole
    * app can run with no file picked and no browser API involved.
    */
-  const [store, setStore] = useState<FileStore | null>(() =>
-    fixtureParam ? new MemoryStore(serialize(FIXTURES[fixtureParam as FixtureName](today))) : null,
-  )
+  const [store, setStore] = useState<FileStore | null>(() => {
+    if (!fixtureParam) return null
+    const memory = new MemoryStore(serialize(FIXTURES[fixtureParam as FixtureName](today)))
+    /*
+     * Fixture builds only, and only when `?fixture=` was explicitly asked for:
+     * expose the store so a browser probe can act as a SECOND writer.
+     *
+     * The undo history has to be discarded whenever another writer's work is
+     * merged in — snapshots taken before that merge predate their edit, so
+     * undoing to one would silently throw it away. That is the one genuine
+     * correctness risk in undo, and there is no other way to simulate a
+     * competing writer from a test: a real FileSystemStore needs a native file
+     * picker and a user gesture. Never reachable in normal use, where
+     * `fixtureParam` is undefined and this branch does not run.
+     */
+    ;(globalThis as unknown as { __weekspanFixtureStore?: MemoryStore }).__weekspanFixtureStore =
+      memory
+    return memory
+  })
   /** The directory the current ledger lives in, so the dropdown can list siblings. */
   const [dir, setDir] = useState<{ handle: FileSystemDirectoryHandle; key: string } | null>(null)
   /**
@@ -210,8 +227,18 @@ function Workspace({
   onFileReady: (handle: FileSystemDirectoryHandle, fileName: string, key: string) => void
   onPickAnotherFolder: () => void
 }): JSX.Element {
-  const { status, weekspan, mutate, mutateWithArchives, lastMerged, lastConflicts } =
-    useWeekspan(store)
+  const {
+    status,
+    weekspan,
+    mutate,
+    mutateWithArchives,
+    lastMerged,
+    lastConflicts,
+    undo,
+    redo,
+    undoDepth,
+    redoDepth,
+  } = useWeekspan(store)
 
   const [zoom, setZoom] = useState(() => loadZoom())
   const fillWeeks = useFillWeeks(zoom)
@@ -369,6 +396,16 @@ function Workspace({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
+      // Undo/redo. Guarded on the typing target so a text field keeps the
+      // browser's own undo — inside an InlineEdit, Cmd+Z must fix your typo,
+      // not roll back the weekspan. (InlineEdit also stops propagation, but a
+      // field that forgets to would otherwise silently lose its native undo.)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        if (isTypingTarget(e.target)) return
+        e.preventDefault()
+        void (e.shiftKey ? redo() : undo())
+        return
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setCaptureOpen(true)
@@ -405,7 +442,7 @@ function Workspace({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [weekspan, selection, today, mutate])
+  }, [weekspan, selection, today, mutate, undo, redo])
 
   /** Menu entries route through the same pure reducer the keyboard uses, so the
    *  two paths cannot drift (e.g. vacation-day refusal applying to one but not
@@ -618,7 +655,7 @@ function Workspace({
             }}
           />
         </div>
-        <ShortcutBar count={vm.rows.length} />
+        <ShortcutBar count={vm.rows.length} undoDepth={undoDepth} />
       </div>
 
       {menu && menu.sel.date !== null ? (
@@ -741,6 +778,10 @@ function Workspace({
               }
             })
             setCloseOutOpen(false)
+            // Close-out writes archive files that nothing can take back, so it
+            // clears the undo history (see `useWeekspan`). Say so — a Ctrl+Z
+            // that silently does nothing is worse than one that explains.
+            say('Week closed. This cannot be undone.', 'warn')
           }}
         />
       ) : null}

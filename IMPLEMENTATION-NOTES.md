@@ -1008,3 +1008,55 @@ undo all of that care.
 The editor inherits the header's own 600/12px type rather than `.ws-title-text`'s, so the name
 does not change size or weight the moment you click it. Measured: divider height 29px before
 and during editing — the same "editing must not move anything" rule the row heights follow.
+
+## Undo / redo (Ctrl+Z)
+
+A refactor, not a rewrite — the architecture had already done the hard part by accident.
+`useWeekspan.mutate` is the only mutation path, and `apply` already returns a complete immutable
+`Weekspan`, so the history is literally a list of past values. **No call site changed.** No
+command objects, no inverse operations, no serialisation layer.
+
+`store/history.ts` holds the mechanics as pure functions, out of the hook, for the same reason
+`keymap.ts` and `selection.ts` sit outside their components: the interesting behaviour is a state
+machine, and there is no jsdom in this workspace, so a hook test would need a new dependency to
+say much less.
+
+### Invalidation is the whole feature
+
+Restoring a snapshot is last-writer-wins across the entire file, while every other write path
+merges at item and cell granularity. That asymmetry is why the stack is discarded aggressively:
+
+1. **A merge lands** — from the 2s poll, or a write that returned `merged`. Every snapshot
+   predates that other writer's work, so undoing to one would silently discard it. **This is the
+   one genuine correctness risk in the feature**, and the probe fails without it (verified by
+   removing the call).
+2. **Close-out** is a BARRIER, not a step. It writes `archive/<week>.json`, `FileStore` has no
+   delete at all, and `writeArchive` refuses to overwrite — so a redo past a close would throw.
+   Making it undoable means adding deletion to the store contract, a much bigger change than the
+   rest of this combined. The UI says "Week closed. This cannot be undone." rather than leaving a
+   Ctrl+Z that silently does nothing.
+3. **An error, or a different ledger** — the snapshots describe a state that is not on disk.
+
+Undo goes through the same `write` path as everything else, so it merges rather than clobbers if
+the file moved underneath — and that merge then invalidates the stack, per (1).
+
+### Testing the wiring
+
+`history.test.ts` covers the state machine (branch truncation, cap from the old end, depth
+reporting matching what actually steps). What it cannot cover is WHEN the hook records and
+discards, which is where the risk lives — so `scripts/probe-undo.mjs` drives the built app:
+marks, multi-step, reorder, redo truncation, the close-out barrier, and a genuine second writer.
+
+To simulate that second writer the fixture build exposes its `MemoryStore` on `globalThis`,
+**only** when `?fixture=` was explicitly asked for. A real `FileSystemStore` needs a native
+picker and a user gesture, so there is no other way to get a competing write from a test.
+
+*Out of scope by design:* per-device preferences (theme, zoom, no-project colour) and UI state
+(selection, collapsed groups, view mode). None live in the `Weekspan`, and none should move
+under Ctrl+Z.
+
+### Incidental dedup
+
+`isTypingTarget` existed as two byte-identical private copies, one carrying a comment saying the
+other file was off-limits to edit at the time and that the two must be hand-synced. That
+constraint no longer applied, and Cmd+Z needed a third caller, so it is now one module.

@@ -249,6 +249,9 @@ body {
 .ws-topbar { flex: none; }
 .ws-foot { flex: none; }
 
+/* A shortcut that is real but currently has nothing to act on. */
+.ws-foot-dim { opacity: 0.45; }
+
 /* Present but recessive: you look for it when updating, never otherwise. */
 .ws-foot-build {
   font: 400 9.5px/1 'IBM Plex Mono', monospace;

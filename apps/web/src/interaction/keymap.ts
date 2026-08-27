@@ -25,6 +25,7 @@ import {
 } from '@weekspan/weekspan-core'
 import { buildGrid } from '../grid/viewModel.js'
 import { nextMarkState } from './cycle.js'
+import { isTypingTarget } from './isTypingTarget.js'
 import { indentItem, outdentItem } from './nesting.js'
 import { moveSelection, type Selection } from './selection.js'
 
@@ -89,19 +90,6 @@ export const KEYMAP: readonly KeyBinding[] = [
   { key: 'tab', shift: true, action: { kind: 'outdent' } },
 ]
 
-/**
- * Duck-typed rather than `instanceof HTMLElement` on purpose: this module has
- * no DOM dependency otherwise, and `applyAction`/`resolveKey` are unit-tested
- * under plain Node (no jsdom in this workspace), where `HTMLElement` does not
- * exist as a global at all.
- */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (target === null || typeof target !== 'object') return false
-  const t = target as { tagName?: unknown; isContentEditable?: unknown }
-  if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') return true
-  if (t.isContentEditable === true) return true
-  return false
-}
 
 /**
  * Maps a raw keyboard event to an `Action`, or `null` if it isn't bound.

@@ -9,6 +9,7 @@ import {
   type Weekspan,
 } from '@weekspan/weekspan-core'
 import type { FileStore, StoreStatus, WriteResult } from './FileStore.js'
+import { emptyHistory, record, redo as redoHistory, undo as undoHistory, type History } from './history.js'
 
 /**
  * The single mutation path.
@@ -21,6 +22,34 @@ import type { FileStore, StoreStatus, WriteResult } from './FileStore.js'
  * `apply` returns the next weekspan, or null meaning "nothing to do" — which
  * writes nothing at all, so a no-op interaction produces no file change and no
  * diff in a synced folder.
+ *
+ * ## Undo
+ *
+ * Undo lives here rather than in the callers, and that is the whole reason it
+ * is cheap: `mutate` is the only mutation path, and `apply` already returns a
+ * complete immutable `Weekspan`. So the history is literally a list of past
+ * values — no command objects, no inverse operations, no call site changes.
+ *
+ * The stack is deliberately CONSERVATIVE, because a snapshot is whole-file
+ * while every other write path merges at item and cell granularity. Restoring
+ * one is last-writer-wins across the entire weekspan, so it is only safe while
+ * nothing else has touched the file. Three things therefore clear it:
+ *
+ *   1. **A merge lands** — from the poll, or from a write that came back
+ *      `merged`. Every snapshot predates that other writer's work, so undoing
+ *      to one would silently discard it. This is the one genuine correctness
+ *      risk in the whole feature.
+ *   2. **Close-out** (`mutateWithArchives`) — a barrier, not a step. It writes
+ *      `archive/<week>.json` as a side effect and `FileStore` has no delete;
+ *      worse, `writeArchive` refuses to overwrite, so a redo past a close would
+ *      throw. Making close-out undoable means adding deletion to the store
+ *      contract, which is a much larger change than the rest of this combined.
+ *   3. **An error, or a different ledger** — in both cases the snapshots
+ *      describe a state that is no longer the one on disk.
+ *
+ * Undo itself goes through the same `write` path as everything else, so it
+ * merges rather than clobbers if the file moved underneath — and that merge
+ * then invalidates the stack, as above.
  */
 
 export interface WeekspanStore {
@@ -48,9 +77,23 @@ export interface WeekspanStore {
   lastConflicts: WriteResult['conflicts']
   /** True when the last write had to merge in someone else's changes. */
   lastMerged: boolean
+  /** Step back one change. A no-op when there is nothing to undo. */
+  undo: () => Promise<void>
+  /** Step forward again. A no-op when nothing was undone, or after a new change. */
+  redo: () => Promise<void>
+  /** How many steps are available in each direction, for the UI to enable on. */
+  undoDepth: number
+  redoDepth: number
 }
 
 const POLL_MS = 2000
+
+/**
+ * How many states to keep. At roughly 220 bytes per item serialised, a 67-item
+ * weekspan is ~15KB, so 50 deep is single-digit MB worst case — and close-out
+ * keeps the working file bounded, so it does not grow without limit.
+ */
+const MAX_HISTORY = 50
 
 export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): WeekspanStore {
   const [status, setStatus] = useState<StoreStatus>({ kind: 'unbound' })
@@ -62,7 +105,16 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
   /** Guards against a poll landing mid-write and reverting it. */
   const writing = useRef(false)
 
+  /** Undo/redo stacks. The mechanics live in `history.ts`; this only wires them. */
+  const [history, setHistory] = useState<History<Weekspan>>(emptyHistory)
+
+  const forgetHistory = useCallback(() => {
+    setHistory(emptyHistory())
+  }, [])
+
   const load = useCallback(async (): Promise<void> => {
+    // Any (re)load means the states we remember are not this file's states.
+    forgetHistory()
     if (!store) {
       setStatus({ kind: 'unbound' })
       return
@@ -79,18 +131,22 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
     } catch (err) {
       setStatus(describe(err))
     }
-  }, [store])
+  }, [store, forgetHistory])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const mutate = useCallback(
-    async (apply: (w: Weekspan) => Weekspan | null): Promise<void> => {
-      if (!store || status.kind !== 'ready') return
-
-      const next = apply(status.weekspan)
-      if (next === null) return // no change: no write, no diff
+  /**
+   * Write one weekspan. Shared by `mutate`, `undo` and `redo`.
+   *
+   * Deliberately owns NO history — its callers do. That is what lets undo reuse
+   * the whole optimistic-write-then-merge path without pushing itself back onto
+   * the stack it is walking.
+   */
+  const commit = useCallback(
+    async (next: Weekspan): Promise<void> => {
+      if (!store) return
 
       // Optimistic: the grid updates immediately, then the write settles. A
       // spreadsheet that lagged a keystroke behind the file would feel broken.
@@ -103,16 +159,54 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
         setLastConflicts(result.conflicts)
         setLastMerged(result.merged)
         // A merge means disk now holds something other than what we sent, so the
-        // merged result — not our optimistic copy — becomes the truth.
-        if (result.merged) setStatus({ kind: 'ready', weekspan: parse(result.text) })
+        // merged result — not our optimistic copy — becomes the truth. Every
+        // snapshot we hold predates that other writer, so the history goes too.
+        if (result.merged) {
+          setStatus({ kind: 'ready', weekspan: parse(result.text) })
+          forgetHistory()
+        }
       } catch (err) {
         setStatus(describe(err))
+        forgetHistory()
       } finally {
         writing.current = false
       }
     },
-    [store, status],
+    [store, forgetHistory],
   )
+
+  const mutate = useCallback(
+    async (apply: (w: Weekspan) => Weekspan | null): Promise<void> => {
+      if (!store || status.kind !== 'ready') return
+
+      const previous = status.weekspan
+      const next = apply(previous)
+      if (next === null) return // no change: no write, no diff, no history entry
+
+      // Record BEFORE the write. A no-op returns above, so the stack only ever
+      // grows when something actually changed.
+      setHistory((h) => record(h, previous, MAX_HISTORY))
+
+      await commit(next)
+    },
+    [store, status, commit],
+  )
+
+  const step = useCallback(
+    async (dir: 'undo' | 'redo'): Promise<void> => {
+      if (!store || status.kind !== 'ready') return
+      const move = dir === 'undo' ? undoHistory : redoHistory
+      const result = move(history, status.weekspan, MAX_HISTORY)
+      if (result === null) return // nothing to step to: write nothing
+
+      setHistory(result.history)
+      await commit(result.target)
+    },
+    [store, status, commit, history],
+  )
+
+  const undo = useCallback(() => step('undo'), [step])
+  const redo = useCallback(() => step('redo'), [step])
 
   const mutateWithArchives = useCallback(
     async (
@@ -121,6 +215,12 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
       if (!store || status.kind !== 'ready') return
       const next = apply(status.weekspan)
       if (next === null) return
+
+      // Close-out is a BARRIER, not a step. It writes archive files as a side
+      // effect and `FileStore` has no delete, so an undo could not take them
+      // back — and `writeArchive` refuses to overwrite, so a redo past a close
+      // would throw outright. Dropping the history is the honest outcome.
+      forgetHistory()
 
       writing.current = true
       try {
@@ -140,7 +240,7 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
         writing.current = false
       }
     },
-    [store, status],
+    [store, status, forgetHistory],
   )
 
   // Poll for writes from the CLI, an agent, or another tab.
@@ -163,6 +263,10 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
             return { kind: 'ready', weekspan: result.merged }
           })
           baseline.current = text
+          // Someone else's work is now folded in. Every snapshot we hold
+          // predates it, so undoing to one would silently throw their edit
+          // away — the one genuine correctness risk in the undo feature.
+          forgetHistory()
         } catch {
           // A transient read failure must not kill the poll loop.
         }
@@ -172,7 +276,7 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
       cancelled = true
       clearInterval(id)
     }
-  }, [store, pollMs])
+  }, [store, pollMs, forgetHistory])
 
   return {
     status,
@@ -182,6 +286,10 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
     reload: load,
     lastConflicts,
     lastMerged,
+    undo,
+    redo,
+    undoDepth: history.past.length,
+    redoDepth: history.future.length,
   }
 }
 
