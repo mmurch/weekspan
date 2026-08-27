@@ -19,7 +19,7 @@
  */
 
 import type { IsoDate, Project, Weekspan } from '@weekspan/weekspan-core'
-import { siblingsOf } from '@weekspan/weekspan-core'
+import { defaultInsertAnchor, siblingsOf } from '@weekspan/weekspan-core'
 import { parseCapture } from './capture.js'
 import { insertItem } from './draft.js'
 import { normalizeTitle } from './normalizeTitle.js'
@@ -154,6 +154,7 @@ export function commitBulk(
   weekspan: Weekspan,
   parse: BulkParse,
   position: 'top' | 'backlog',
+  today: IsoDate,
 ): Weekspan | null {
   const creatable = parse.lines.filter((l) => !l.skipped)
   if (creatable.length === 0) return null
@@ -162,11 +163,15 @@ export function commitBulk(
   // recomputed from `current`, since the point is that existing items don't
   // move and new items chain after each other, not after one another's
   // shifting neighbours.
-  const beforeId = position === 'top' ? siblingsOf(weekspan.items, null)[0]?.id : undefined
+  // BOTH ends, because a lone `beforeId` has no lower bound and would drop the
+  // batch at the very top of the list rather than into the intended gap — see
+  // `defaultInsertAnchor`.
+  const anchor = position === 'top' ? defaultInsertAnchor(weekspan, today) : {}
+  const beforeId = anchor.beforeId
 
   let current = weekspan
   let afterId: string | undefined =
-    position === 'backlog' ? siblingsOf(weekspan.items, null).at(-1)?.id : undefined
+    position === 'backlog' ? siblingsOf(weekspan.items, null).at(-1)?.id : anchor.afterId
 
   for (const line of creatable) {
     try {

@@ -107,6 +107,7 @@ export {
 } from './derived.js'
 
 export { sortByDate, sortKeyFor } from './sortByDate.js'
+export { defaultInsertAnchor, defaultInsertBeforeId, itemsRemovedBy, removeItem } from './items.js'
 
 export type { WeekWindow, WindowWeek } from './window.js'
 export {

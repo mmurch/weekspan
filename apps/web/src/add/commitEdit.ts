@@ -1,4 +1,4 @@
-import type { Weekspan } from '@weekspan/weekspan-core'
+import { removeItem, type Weekspan } from '@weekspan/weekspan-core'
 import { insertItem, updateTitle } from './draft.js'
 
 /**
@@ -35,10 +35,14 @@ export function commitEdit(
   const trimmed = title.trim()
 
   if (target.kind === 'existing') {
-    // A blank title on an EXISTING item cancels rather than deleting. Deleting on
-    // an accidental select-all-and-backspace would be unrecoverable, and there is
-    // an explicit delete elsewhere.
-    if (trimmed === '') return null
+    // Blanking a title DELETES the item — an item with no title is not a thing
+    // the grid can render or the user can act on, so leaving it behind as an
+    // invisible row was worse than removing it. Children go with it (see
+    // `removeItem`: an orphaned parentId makes the file unparseable).
+    //
+    // This is destructive and there is no undo, so the caller is expected to say
+    // what went — see App's onCommitEdit, which names the deleted item.
+    if (trimmed === '') return removeItem(weekspan, target.itemId)
     return updateTitle(weekspan, target.itemId, trimmed)
   }
 

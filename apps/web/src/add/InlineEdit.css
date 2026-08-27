@@ -13,7 +13,8 @@
   margin: 0;
   background: transparent;
   color: var(--ws-ink);
-  font: 400 12.5px/1.4 'IBM Plex Sans', sans-serif;
+  /* Must match .ws-title-text exactly, integer line-height included. */
+  font: 400 12.5px/18px 'IBM Plex Sans', sans-serif;
   overflow-wrap: anywhere;
   display: block;
 }

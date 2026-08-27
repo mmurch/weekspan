@@ -25,11 +25,28 @@ describe('editing an existing title', () => {
     expect(commitEdit(base, { kind: 'existing', itemId: item.id }, `  ${item.title}  `)).toBeNull()
   })
 
-  it('cancels on a blank title rather than deleting the item', () => {
-    // Backspacing a selected title to empty must not be a destructive act.
+  it('DELETES the item when the title is blanked', () => {
+    // Reversed deliberately: an item with no title is not something the grid can
+    // render or the user can act on, so leaving it behind as an invisible row
+    // was worse than removing it. The caller names what went — see App.
     const id = rows[0]!.id
-    expect(commitEdit(base, { kind: 'existing', itemId: id }, '   ')).toBeNull()
+    const next = commitEdit(base, { kind: 'existing', itemId: id }, '   ')
+    expect(next).not.toBeNull()
+    expect(next!.items.find((i) => i.id === id)).toBeUndefined()
+    // Pure: the input is untouched.
     expect(base.items.find((i) => i.id === id)).toBeDefined()
+  })
+
+  it('takes an item\'s children with it, so no parentId is left dangling', () => {
+    // parse() rejects an item whose parentId names nothing, so orphans would
+    // make the file unloadable on the very next read.
+    const parent = base.items.find((i) => base.items.some((c) => c.parentId === i.id))
+    if (!parent) return
+    const next = commitEdit(base, { kind: 'existing', itemId: parent.id }, '')!
+    expect(next.items.some((i) => i.parentId === parent.id)).toBe(false)
+    for (const item of next.items) {
+      if (item.parentId != null) expect(next.items.some((i) => i.id === item.parentId)).toBe(true)
+    }
   })
 })
 

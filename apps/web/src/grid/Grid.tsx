@@ -3,16 +3,18 @@ import { Fragment } from 'react'
 import type React from 'react'
 import type { IsoDate } from '@weekspan/weekspan-core'
 import { intentForMouse, type MouseIntent } from '../interaction/mouse.js'
+import { isItemSelected } from '../interaction/selection.js'
 import { InlineEdit } from '../add/InlineEdit.js'
 import type { ProjectRow } from './projectView.js'
 import { dividerKey } from '../interaction/projectDragPreview.js'
 
 export interface GridInteraction {
   /** Currently selected cell, or null. */
-  selection?: { itemId: string; date: IsoDate } | null
+  /** `date: null` selects the ITEM column — the frozen title cell. */
+  selection?: { itemId: string; date: IsoDate | null } | null
   /**
-   * One callback for every mouse path. Left = due, right = done, middle = clear,
-   * double = menu; `intentForMouse` decides which.
+   * One callback for every mouse path. Left = select, right = cycle,
+   * left-double = menu, middle = nothing; `intentForMouse` decides which.
    */
   onCellMouse?: (
     itemId: string,
@@ -50,6 +52,8 @@ export interface GridInteraction {
    * seam opened a draft that then rendered nowhere.
    */
   draftSlot?: string | null
+  /** Clicking the add-item row at the foot of the list. Same path as pressing N. */
+  onAddItem?: () => void
   /** The sort-by-date button in the ITEM header. Omit it and no button renders. */
   onSortByDate?: () => void
   /** Clicking the seam between two rows opens a draft there. */
@@ -268,6 +272,7 @@ function Row({
     'ws-title',
     row.state === 'finished' ? 'ws-title--finished' : '',
     row.depth === 1 ? 'ws-title--child' : '',
+    isItemSelected(interaction.selection ?? null, row.id) ? 'ws-title--selected' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -641,11 +646,13 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
         </Fragment>
       ))}
 
-      <div className="ws-addrow">
+      {/* A button, not a caption. It advertised a keyboard shortcut and then
+          ignored the obvious click — the one interaction its own "+" invites. */}
+      <button className="ws-addrow" type="button" onClick={() => interaction.onAddItem?.()}>
         <span className="ws-addrow-plus">+</span>
         <span>add item</span>
         <span className="ws-addrow-kbd">N</span>
-      </div>
+      </button>
 
     </div>
   )

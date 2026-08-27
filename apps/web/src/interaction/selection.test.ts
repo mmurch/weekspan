@@ -56,9 +56,11 @@ describe('moveSelection — arrow movement', () => {
     expect(moveSelection(sel, vm, 'down')).toEqual({ itemId: vm.rows[3]!.id, date: firstDate })
   })
 
-  it('clamps at the left edge instead of wrapping', () => {
+  it('left from the first day steps onto the ITEM column, not into a clamp', () => {
+    // The frozen title cell is part of the same grid now, one step left of the
+    // first date, so it is reachable without the mouse.
     const sel = selectionFromCell(firstRow.id, firstDate)
-    expect(moveSelection(sel, vm, 'left')).toEqual({ itemId: firstRow.id, date: firstDate })
+    expect(moveSelection(sel, vm, 'left')).toEqual({ itemId: firstRow.id, date: null })
   })
 
   it('clamps at the right edge instead of wrapping', () => {
@@ -118,5 +120,44 @@ describe('reconcileSelection', () => {
     const vm2 = buildGrid(withoutItem, today)
 
     expect(reconcileSelection(sel, vm2)).toBeNull()
+  })
+})
+
+describe('moveSelection — the ITEM column', () => {
+  const vm = buildGrid(demoWeekspan(today), today)
+  const firstRow = vm.rows[0]!
+  const firstDate = vm.dates[0]!
+  const itemSel = { itemId: firstRow.id, date: null }
+
+  it('left clamps there — it is the far edge', () => {
+    expect(moveSelection(itemSel, vm, 'left')).toEqual(itemSel)
+  })
+
+  it('right returns to the first day of the window', () => {
+    expect(moveSelection(itemSel, vm, 'right')).toEqual({ itemId: firstRow.id, date: firstDate })
+  })
+
+  it('up and down walk items while staying on the item column', () => {
+    const down = moveSelection(itemSel, vm, 'down')!
+    expect(down.date).toBeNull()
+    expect(down.itemId).toBe(vm.rows[1]!.id)
+
+    const backUp = moveSelection(down, vm, 'up')!
+    expect(backUp).toEqual(itemSel)
+  })
+
+  it('clamps at the top and bottom of the list', () => {
+    expect(moveSelection(itemSel, vm, 'up')).toEqual(itemSel)
+    const last = { itemId: vm.rows[vm.rows.length - 1]!.id, date: null }
+    expect(moveSelection(last, vm, 'down')).toEqual(last)
+  })
+
+  it('a round trip right-then-left comes back to the same title', () => {
+    const right = moveSelection(itemSel, vm, 'right')!
+    expect(moveSelection(right, vm, 'left')).toEqual(itemSel)
+  })
+
+  it('still returns null for a row that no longer exists', () => {
+    expect(moveSelection({ itemId: 'ghost', date: null }, vm, 'down')).toBeNull()
   })
 })

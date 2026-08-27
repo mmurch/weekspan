@@ -199,6 +199,9 @@ function applyMark(
   weekspan: Weekspan,
 ): ActionResult {
   if (sel === null) return { weekspan: null, selection: null }
+  // The ITEM column carries no date, so there is no cell to mark. Keep the
+  // selection and write nothing rather than guessing a day.
+  if (sel.date === null) return { weekspan: null, selection: sel }
 
   const isVacation = weekspan.vacationDays.includes(sel.date)
   if (isVacation && (kind === 'setDue' || kind === 'setDone')) {
@@ -235,6 +238,10 @@ function applyMark(
 function applyCycle(sel: Selection | null, weekspan: Weekspan, today: IsoDate): ActionResult {
   if (sel === null) return { weekspan: null, selection: null }
   if (!findItem(weekspan, sel.itemId)) return { weekspan: null, selection: null }
+  // On the item column Enter means "edit this title", which is a UI concern the
+  // caller owns (see App's keydown handler). The reducer stays out of it and
+  // writes nothing, so this cannot silently mark a cell instead.
+  if (sel.date === null) return { weekspan: null, selection: sel }
 
   return { weekspan: nextMarkState(weekspan, sel.itemId, sel.date, today), selection: sel }
 }
@@ -278,6 +285,8 @@ function applyReorder(dir: 'up' | 'down', sel: Selection | null, weekspan: Weeks
  */
 function applyNudgeDue(dir: 'left' | 'right', sel: Selection | null, weekspan: Weekspan): ActionResult {
   if (sel === null) return { weekspan: null, selection: null }
+  // Nothing to nudge from the item column — there is no due date there.
+  if (sel.date === null) return { weekspan: null, selection: sel }
   const item = findItem(weekspan, sel.itemId)
   if (!item) return { weekspan: null, selection: null }
 

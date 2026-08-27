@@ -17,8 +17,11 @@ import { ZoomPicker, loadZoom, useFillWeeks } from './zoom.js'
 import { MemoryStore, type FileStore } from './store/FileStore.js'
 import { FileSystemStore } from './store/FileSystemStore.js'
 import { FilePicker } from './store/FilePicker.js'
+import { forgetLastLedger, loadLastLedger, saveLastLedger } from './store/lastLedger.js'
+import { loadHandle } from './store/handles.js'
+import { LedgerMenu } from './store/LedgerMenu.js'
 import { useWeekspan } from './store/useWeekspan.js'
-import { serialize, sortByDate } from '@weekspan/weekspan-core'
+import { defaultInsertAnchor, itemsRemovedBy, serialize, sortByDate } from '@weekspan/weekspan-core'
 import { resolveKey, applyAction } from './interaction/keymap.js'
 import { reconcileSelection, selectionFromCell, type Selection } from './interaction/selection.js'
 import { CellMenu } from './interaction/CellMenu.js'
@@ -70,6 +73,34 @@ function todayFromClock(): string {
   return `${y}-${m}-${d}`
 }
 
+/**
+ * Where a captured item lands.
+ *
+ * `top` is the default (plain Enter) and means "above the first row with
+ * nothing in it this week" — see `defaultInsertBeforeId`. `backlog`
+ * (Alt+Enter) still means the very end, which is the whole point of having a
+ * second binding.
+ *
+ * Returns the anchor as a spreadable fragment because `insertItem` uses
+ * `exactOptionalPropertyTypes`: passing `beforeId: undefined` is a type error,
+ * so an absent anchor has to be an absent KEY.
+ */
+function captureAnchor(
+  weekspan: Weekspan,
+  today: string,
+  position: 'top' | 'backlog',
+): { beforeId?: string; afterId?: string } {
+  const roots = weekspan.items.filter((i) => i.parentId == null)
+  if (roots.length === 0) return {}
+
+  if (position === 'backlog') {
+    const last = roots[roots.length - 1]?.id
+    return last ? { afterId: last } : {}
+  }
+
+  return defaultInsertAnchor(weekspan, today)
+}
+
 export function App(): JSX.Element {
   const params = new URLSearchParams(window.location.search)
   const today = params.get('today') ?? todayFromClock()
@@ -95,30 +126,88 @@ export function App(): JSX.Element {
   const [store, setStore] = useState<FileStore | null>(() =>
     fixtureParam ? new MemoryStore(serialize(FIXTURES[fixtureParam as FixtureName](today))) : null,
   )
+  /** The directory the current ledger lives in, so the dropdown can list siblings. */
+  const [dir, setDir] = useState<{ handle: FileSystemDirectoryHandle; key: string } | null>(null)
+  /**
+   * Restoring blocks the first paint. Without it the picker flashes up for a
+   * frame on every reload before the remembered ledger resolves, which reads as
+   * "it forgot" even though it did not.
+   */
+  const [restoring, setRestoring] = useState(!fixtureParam)
 
   const onFileReady = useCallback(
-    (dir: FileSystemDirectoryHandle, fileName: string) => {
-      setStore(new FileSystemStore(dir, fileName))
+    (handle: FileSystemDirectoryHandle, fileName: string, key: string) => {
+      setStore(new FileSystemStore(handle, fileName))
+      setDir({ handle, key })
+      saveLastLedger({ key, fileName })
     },
     [],
   )
 
+  // Reopen last session's ledger. See `lastLedger.ts` for why this can only
+  // QUERY the permission and must fall through to the picker otherwise.
+  useEffect(() => {
+    if (fixtureParam) return
+    let cancelled = false
+    void (async () => {
+      const last = loadLastLedger()
+      if (!last) {
+        if (!cancelled) setRestoring(false)
+        return
+      }
+      try {
+        const handle = await loadHandle(last.key)
+        if (handle && (await handle.queryPermission({ mode: 'readwrite' })) === 'granted') {
+          if (!cancelled) onFileReady(handle, last.fileName, last.key)
+        } else if (!handle) {
+          // The directory was forgotten; the pointer to it is now noise.
+          forgetLastLedger()
+        }
+      } catch {
+        // A dead handle or an IndexedDB failure just means "ask the user".
+      }
+      if (!cancelled) setRestoring(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [fixtureParam, onFileReady])
+
+  if (restoring) return <Splash>Opening…</Splash>
   if (!store) return <FilePicker onFileReady={onFileReady} />
   return (
-    <Workspace store={store} today={today} theme={theme} onThemeChange={onThemeChange} />
+    <Workspace
+      store={store}
+      dir={dir}
+      today={today}
+      theme={theme}
+      onThemeChange={onThemeChange}
+      onFileReady={onFileReady}
+      onPickAnotherFolder={() => {
+        setStore(null)
+        setDir(null)
+        forgetLastLedger()
+      }}
+    />
   )
 }
 
 function Workspace({
   store,
+  dir,
   today,
   theme,
   onThemeChange,
+  onFileReady,
+  onPickAnotherFolder,
 }: {
   store: FileStore
+  dir: { handle: FileSystemDirectoryHandle; key: string } | null
   today: string
   theme: ThemeChoice
   onThemeChange: (t: ThemeChoice) => void
+  onFileReady: (handle: FileSystemDirectoryHandle, fileName: string, key: string) => void
+  onPickAnotherFolder: () => void
 }): JSX.Element {
   const { status, weekspan, mutate, mutateWithArchives, lastMerged, lastConflicts } =
     useWeekspan(store)
@@ -294,6 +383,15 @@ function Workspace({
         setCaptureOpen(true)
         return
       }
+      // Enter on the ITEM column opens the title editor. The second Enter is
+      // InlineEdit's own — it commits and clears `editing`, and because the
+      // selection was never moved, the row drops straight back to selected.
+      // `applyCycle` deliberately refuses this case rather than marking a cell.
+      if (action.kind === 'cycle' && selection !== null && selection.date === null) {
+        e.preventDefault()
+        setEditing({ kind: 'existing', itemId: selection.itemId })
+        return
+      }
       e.preventDefault()
       const result = applyAction(action, selection, weekspan, today)
       setSelection(result.selection)
@@ -334,6 +432,9 @@ function Workspace({
         <TopBar
           today={today}
           name={store.name}
+          dir={dir}
+          onFileReady={onFileReady}
+          onPickAnotherFolder={onPickAnotherFolder}
           zoom={zoom}
           onZoom={setZoom}
           view={view}
@@ -358,11 +459,15 @@ function Workspace({
             vm={vm}
             selection={selection}
             onCellMouse={(itemId, date, intent, x, y) => {
-              // Left = due, right = done, middle = clear, double = menu. Every
-              // path still goes through `applyAction`, so the vacation-day
-              // refusal applies to all of them without being restated here.
+              // Left = select, right = cycle, left-double = menu; middle never
+              // reaches here (see `intentForMouse`). Selection moves for every
+              // path, so a cycle also leaves the cell selected for the keyboard
+              // to take over. `cycle` goes through `applyAction` — the same
+              // reducer Enter uses — so the vacation-day refusal cannot differ
+              // between mouse and keyboard.
               const sel = selectionFromCell(itemId, date)
               setSelection(sel)
+              if (intent.kind === 'select') return
               if (intent.kind === 'menu') {
                 setMenu({ x, y, sel })
                 return
@@ -371,6 +476,7 @@ function Workspace({
               if (result.weekspan) void mutate(() => result.weekspan)
             }}
             onCloseOut={() => setCloseOutOpen(true)}
+            onAddItem={() => setCaptureOpen(true)}
             onSortByDate={() => {
               void mutate((w) => {
                 const sorted = sortByDate(w, today)
@@ -459,6 +565,16 @@ function Workspace({
               const target = editing
               setEditing(null)
               if (!target) return
+              // Blanking an existing title deletes it. Destructive and
+              // undoable only by retyping, so name what went rather than
+              // letting a row vanish silently.
+              if (target.kind === 'existing' && title.trim() === '') {
+                const gone = itemsRemovedBy(weekspan, target.itemId)
+                if (gone.length > 0) {
+                  const extra = gone.length > 1 ? ` and ${gone.length - 1} sub-item(s)` : ''
+                  say(`Deleted ${JSON.stringify(gone[0]!.title)}${extra}.`, 'warn')
+                }
+              }
               // commitEdit returns null for an unchanged title or an abandoned
               // draft, and `mutate` treats null as "write nothing".
               void mutate((w) => commitEdit(w, target, title))
@@ -468,7 +584,7 @@ function Workspace({
         <ShortcutBar count={vm.rows.length} />
       </div>
 
-      {menu ? (
+      {menu && menu.sel.date !== null ? (
         <CellMenu
           position={{ x: menu.x, y: menu.y }}
           cell={{ itemId: menu.sel.itemId, date: menu.sel.date }}
@@ -485,7 +601,7 @@ function Workspace({
           today={today}
           onClose={() => setCaptureOpen(false)}
           onSubmitBulk={(parse, position) => {
-            void mutate((w) => commitBulk(w, parse, position))
+            void mutate((w) => commitBulk(w, parse, position, today))
             setCaptureOpen(false)
             say(`Imported ${parse.createCount} item(s).`)
           }}
@@ -497,20 +613,11 @@ function Workspace({
             }
             void mutate((w) => {
               try {
-                const roots = w.items.filter((i) => i.parentId == null)
-                const anchorTop = roots[0]?.id
-                const anchorEnd = roots[roots.length - 1]?.id
                 return insertItem(w, {
                   title: capture.title,
                   // An empty weekspan has no anchor at all; omit rather than pass
                   // undefined, which exactOptionalPropertyTypes rejects.
-                  ...(position === 'top'
-                    ? anchorTop
-                      ? { beforeId: anchorTop }
-                      : {}
-                    : anchorEnd
-                      ? { afterId: anchorEnd }
-                      : {}),
+                  ...captureAnchor(w, today, position),
                   ...(capture.due ? { due: capture.due } : {}),
                   ...(capture.projectId ? { projectId: capture.projectId } : {}),
                 }).weekspan
@@ -585,6 +692,9 @@ function Banner({ children }: { children: React.ReactNode }): JSX.Element {
 function TopBar({
   today,
   name,
+  dir,
+  onFileReady,
+  onPickAnotherFolder,
   zoom,
   onZoom,
   view,
@@ -598,6 +708,9 @@ function TopBar({
 }: {
   today: string
   name: string
+  dir: { handle: FileSystemDirectoryHandle; key: string } | null
+  onFileReady: (handle: FileSystemDirectoryHandle, fileName: string, key: string) => void
+  onPickAnotherFolder: () => void
   zoom: number
   onZoom: (z: number) => void
   view: 'priority' | 'project'
@@ -614,9 +727,12 @@ function TopBar({
     .replace(',', '')
   return (
     <div className="ws-topbar">
-      <span className="ws-filepicker">
-        {name} <span className="ws-caret">▾</span>
-      </span>
+      <LedgerMenu
+        name={name}
+        dir={dir}
+        onOpen={onFileReady}
+        onPickAnotherFolder={onPickAnotherFolder}
+      />
       {/* One group, two segments. `aria-pressed` is what tells a screen reader
           which view is current — the pill styling alone says nothing. */}
       <div className="ws-seggroup" role="group" aria-label="View">

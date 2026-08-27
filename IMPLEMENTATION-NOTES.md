@@ -871,3 +871,88 @@ Found while testing the above, and it affected real projects equally. `App` capt
 opened it. Now `position: fixed` with the click coordinates, matching `CellMenu`, plus a clamp
 so it cannot run off the right edge. Its width is computed from the swatch count rather than
 measured — measuring would need a layout pass the first paint does not have.
+
+## Eight changes — notes on the ones with a decision in them
+
+### New items land above the first unmarked row
+
+The brief gave two descriptions — "immediately below the last item with a marker this week" and
+"the first non-marked item" — which agree only when the marked items form an unbroken block.
+`defaultInsertBeforeId` takes the second: a capture lands at the TOP of the unscheduled block,
+as high as it can go without jumping above scheduled work. The first reading would drop it below
+unscheduled items that happen to sit above a late marked one.
+
+**A lone `beforeId` does not mean "immediately before".** The first attempt passed only the
+anchor and the item appeared at the very top of the list anyway: `rankForInsert(null, anchor)`
+has no lower bound, so it produced a rank below every existing root. `defaultInsertAnchor`
+returns BOTH neighbours, which is what pins the item into the one-slot gap. Caught by driving
+the real app, not by a unit test — the unit-level function was correct the whole time.
+
+Both capture paths share it. A single-line capture routes through `commitBulk`, which had its
+own `beforeId = first root` and would otherwise have kept the old behaviour for the common case.
+
+### Mouse: left selects, right cycles, middle does nothing
+
+Two consequences forced by the change rather than chosen:
+
+- **Right click is not gated on `detail`.** Cycling means clicking the same cell repeatedly, and
+  the old `detail >= 2 -> menu` rule would have swallowed the second click of every run — due
+  would be reachable, done would not. The double-click check now applies to the LEFT button only.
+- **The menu moved to left double-click.** The brief named all three buttons and did not mention
+  the menu; dropping it silently would have removed a surface the user never asked to lose, and
+  right click — its conventional home — is now the cycle.
+
+Middle click used to CLEAR the cell: a destructive write on a button people press by accident
+while scrolling.
+
+### Row height no longer moves
+
+Two independent causes, both real: `.ws-title--finished` cut vertical padding from 7px to 4px,
+and `.ws-title-text--finished` shrank the font from 12.5px to 11.5px. Completing an item
+shortened its row by ~7px and shunted the list. Completion now changes INK only.
+
+The editing jitter was a third cause: `12.5px/1.4` is a 17.5px line box, and `InlineEdit` is a
+textarea auto-sized to its integer `scrollHeight`, so swapping text for editor grew the row half
+a pixel. Line-height is now an integer `18px` in both places. Measured after the fix: 33px in
+all three states, list bottom identical to the pixel.
+
+### Reopening the last ledger
+
+A stored handle's permission does NOT survive a browser restart — Chrome downgrades it to
+`prompt`, and `requestPermission` needs a user gesture, so it can never run in a load-time
+effect. `queryPermission` is just a question and needs no gesture, so the restore is honest
+about both cases: granted -> open straight away; anything else -> fall through to the picker,
+whose "Reopen" click IS the gesture. A plain refresh lands back in the grid; a cold start costs
+one click. Restoring blocks the first paint, otherwise the picker flashes for a frame and reads
+as "it forgot".
+
+`LedgerMenu` replaces the inert `<span>` that had a caret and did nothing. Scope is the current
+directory — siblings switch in one click; anything else needs the folder picker, because opening
+a directory requires a gesture and a native dialog either way.
+
+### Blanking a title deletes the item
+
+Reversed from the old behaviour, which was a deliberate guard against
+select-all-and-backspace. Children go with it: `parse` rejects an item whose `parentId` names
+nothing, so orphans would make the file unloadable on the very next read. There is no undo, so
+App names what went rather than letting a row vanish silently.
+
+### The item column is selectable
+
+`Selection.date` is now `IsoDate | null`, with `null` meaning the frozen title cell. Modelled as
+a nullable date rather than a separate variant because every consumer already narrows on
+`sel.date`, so the mark actions refuse it without a new branch each — and the compiler named all
+eleven sites that needed a guard.
+
+Enter on the item column opens the editor. `applyCycle` deliberately REFUSES that case rather
+than marking a cell: which surface Enter opens is a UI concern the caller owns, and the reducer
+staying out of it is what makes "Enter cannot silently mark something" true by construction.
+
+### Warm dark's DUE marker
+
+Was `oklch(0.45 0.1 76)` against Solarized's `oklch(0.42 0.1 82)` — near-identical lightness, so
+the two dark themes were indistinguishable on the one marker you look at most. Now
+`oklch(0.84 0.11 88)` with dark ink: Paper's pastel pulled down just enough not to glare on
+`#1c1a17`. Changed in BOTH the `[data-theme="warm"]` block and the `prefers-color-scheme: dark`
+block, since the latter is warm dark serving as the system-dark default and the two must not
+disagree.

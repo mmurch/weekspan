@@ -122,7 +122,7 @@ describe('parseBulk', () => {
     const parse = parseBulk('buy milk\nbuy milk\nbuy milk', projects, today)
     expect(parse.createCount).toBe(3)
 
-    const next = commitBulk(w, parse, 'backlog')!
+    const next = commitBulk(w, parse, 'backlog', today)!
     expect(orderItems(next.items).map((i) => i.title)).toEqual(['buy milk', 'buy milk', 'buy milk'])
   })
 
@@ -137,7 +137,7 @@ describe('commitBulk', () => {
     const w = createWeekspan()
     const parse = parseBulk('buy milk\nwalk dog\ncall mom', projects, today)
 
-    const next = commitBulk(w, parse, 'backlog')
+    const next = commitBulk(w, parse, 'backlog', today)
     expect(next).not.toBeNull()
     expect(orderItems(next!.items).map((i) => i.title)).toEqual(['buy milk', 'walk dog', 'call mom'])
   })
@@ -146,7 +146,7 @@ describe('commitBulk', () => {
     const w = weekspanWith(['a', 'b'])
     const parse = parseBulk('x\ny', projects, today)
 
-    const next = commitBulk(w, parse, 'top')!
+    const next = commitBulk(w, parse, 'top', today)!
     expect(orderItems(next.items).map((i) => i.title)).toEqual(['x', 'y', 'a', 'b'])
   })
 
@@ -154,7 +154,7 @@ describe('commitBulk', () => {
     const w = weekspanWith(['a', 'b'])
     const parse = parseBulk('x\ny', projects, today)
 
-    const next = commitBulk(w, parse, 'backlog')!
+    const next = commitBulk(w, parse, 'backlog', today)!
     expect(orderItems(next.items).map((i) => i.title)).toEqual(['a', 'b', 'x', 'y'])
   })
 
@@ -164,7 +164,7 @@ describe('commitBulk', () => {
     const parse = parseBulk('x\ny', projects, today)
 
     for (const position of ['top', 'backlog'] as const) {
-      const next = commitBulk(w, parse, position)!
+      const next = commitBulk(w, parse, position, today)!
       for (const item of next.items) {
         if (before.has(item.id)) expect(item.rank).toBe(before.get(item.id))
       }
@@ -175,7 +175,7 @@ describe('commitBulk', () => {
     const w = createWeekspan({ projects })
     const parse = parseBulk('call plumber thu\norder tiles weymouth', projects, today)
 
-    const next = commitBulk(w, parse, 'top')!
+    const next = commitBulk(w, parse, 'top', today)!
     const items = orderItems(next.items)
     expect(items[0]!.marks['2026-08-27']).toEqual({ kind: 'due' })
     expect(items[1]!.projectId).toBe('proj-weymouth')
@@ -185,7 +185,7 @@ describe('commitBulk', () => {
     const w = weekspanWith(['a'])
     const parse = parseBulk('   \n\n', projects, today)
     expect(parse.createCount).toBe(0)
-    expect(commitBulk(w, parse, 'top')).toBeNull()
+    expect(commitBulk(w, parse, 'top', today)).toBeNull()
   })
 
   it('skips a line that throws in insertItem and still imports the rest', () => {
@@ -203,7 +203,7 @@ describe('commitBulk', () => {
       createCount: 3,
     }
 
-    const next = commitBulk(w, parse, 'backlog')!
+    const next = commitBulk(w, parse, 'backlog', today)!
     expect(next).not.toBeNull()
     expect(orderItems(next.items).map((i) => i.title)).toEqual(['ok one', 'ok two'])
   })
@@ -214,7 +214,7 @@ describe('commitBulk', () => {
     const parse = parseBulk(text, projects, today)
     expect(parse.createCount).toBe(200)
 
-    const next = commitBulk(w, parse, 'top')!
+    const next = commitBulk(w, parse, 'top', today)!
     const ordered = orderItems(next.items)
     expect(ordered).toHaveLength(200)
     expect(ordered.map((i) => i.title)).toEqual(Array.from({ length: 200 }, (_, i) => `item ${i}`))
@@ -230,7 +230,7 @@ describe('commitBulk', () => {
     const text = Array.from({ length: 200 }, (_, i) => `item ${i}`).join('\n')
     const parse = parseBulk(text, projects, today)
 
-    const next = commitBulk(w, parse, 'backlog')!
+    const next = commitBulk(w, parse, 'backlog', today)!
     const ordered = orderItems(next.items)
     expect(ordered).toHaveLength(202)
     expect(ordered.slice(0, 2).map((i) => i.title)).toEqual(['a', 'b'])
@@ -259,7 +259,7 @@ describe('repeated titles are warned about, never blocked', () => {
 
   it('still creates every repeat as its own item', () => {
     const parse = parseBulk('a\na\na', [], today)
-    const next = commitBulk(createWeekspan(), parse, 'backlog')
+    const next = commitBulk(createWeekspan(), parse, 'backlog', today)
     expect(next!.items.filter((i) => i.title === 'a')).toHaveLength(3)
   })
 })
