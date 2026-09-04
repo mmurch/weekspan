@@ -651,6 +651,12 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
                 ) : null}
                 <Seam
                   afterId={pr.row.id}
+                  // At the foot of a group there is no next row to name, and
+                  // `null` means exactly that — "no upper bound named", NOT
+                  // "above everything". `rankForInsert` resolves the real bound
+                  // from the rank scope. Reading it as infinity is what let two
+                  // groups mint the same key: a group is not a rank scope, so
+                  // its last item is not the spine's last item.
                   beforeId={lastOfGroup ? null : (next.kind === 'item' ? next.row.id : null)}
                   // Rank scope is sibling-scoped exactly as in Priority view;
                   // a project group is not a rank scope.

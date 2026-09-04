@@ -92,13 +92,15 @@ function captureAnchor(
   today: string,
   position: 'top' | 'backlog',
 ): { beforeId?: string; afterId?: string } {
-  const roots = weekspan.items.filter((i) => i.parentId == null)
-  if (roots.length === 0) return {}
-
-  if (position === 'backlog') {
-    const last = roots[roots.length - 1]?.id
-    return last ? { afterId: last } : {}
-  }
+  // Backlog is the very end of the root scope, and naming NO anchor is how you
+  // say that — `insertItem` resolves it against the real siblings.
+  //
+  // Naming `roots[roots.length - 1]` was a latent bug of the same family that
+  // broke plain Enter: `weekspan.items` is insertion-ordered, not rank-ordered
+  // (`insertItem` appends), so after any top-insert the last element is no
+  // longer the highest-ranked root, and appending "after" it minted a key in
+  // the middle of the spine.
+  if (position === 'backlog') return {}
 
   return defaultInsertAnchor(weekspan, today)
 }
@@ -234,6 +236,8 @@ function Workspace({
     mutateWithArchives,
     lastMerged,
     lastConflicts,
+    lastRepairs,
+    lastRanksRepaired,
     undo,
     redo,
     undoDepth,
@@ -495,6 +499,15 @@ function Workspace({
             {lastConflicts.length > 0
               ? ` ${lastConflicts.length} conflict(s) resolved toward this session.`
               : null}
+            {lastRanksRepaired > 0
+              ? ` ${lastRanksRepaired} item(s) re-ranked: both writers inserted in the same place.`
+              : null}
+          </Banner>
+        ) : null}
+        {lastRepairs.length > 0 ? (
+          <Banner>
+            Repaired {lastRepairs.length} duplicate rank(s) on load and saved the file. Ordering is
+            unchanged; inserting between the affected rows works again.
           </Banner>
         ) : null}
         <div className="ws-scroll">
@@ -651,7 +664,7 @@ function Workspace({
               }
               // commitEdit returns null for an unchanged title or an abandoned
               // draft, and `mutate` treats null as "write nothing".
-              void mutate((w) => commitEdit(w, target, title))
+              void mutate((w) => commitEdit(w, target, title, (reason) => say(reason, 'warn')))
             }}
           />
         </div>
@@ -695,9 +708,13 @@ function Workspace({
                   ...(capture.due ? { due: capture.due } : {}),
                   ...(capture.projectId ? { projectId: capture.projectId } : {}),
                 }).weekspan
-              } catch {
+              } catch (err) {
                 // insertItem throws on an empty title or a bad anchor. Refusing to
-                // write is the right outcome; crashing the app is not.
+                // write is the right outcome; crashing the app is not. Saying
+                // nothing at all is also not: this `catch` is why a duplicate
+                // rank read as "quick capture is broken" rather than as the one
+                // named error it actually was.
+                say(err instanceof Error ? err.message : 'Could not add that item.', 'warn')
                 return null
               }
             })

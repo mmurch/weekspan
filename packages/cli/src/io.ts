@@ -47,6 +47,13 @@ export interface SaveResult {
   /** True when a concurrent change was detected and merged in. */
   merged: boolean
   conflicts: MergeConflict[]
+  /**
+   * Items the merge had to give a fresh rank because both sides minted the same
+   * one. Not a conflict — nothing was lost — but the merge changed the file
+   * beyond what either side wrote, so it is reported rather than applied
+   * silently.
+   */
+  ranksRepaired: number
 }
 
 export async function loadWeekspan(weekspanPath: string): Promise<LoadedWeekspan> {
@@ -118,9 +125,11 @@ export async function saveWeekspan(loaded: LoadedWeekspan, next: Weekspan): Prom
   }
 
   if (currentText === loaded.baselineText) {
-    if (nextText === currentText) return { written: false, merged: false, conflicts: [] }
+    if (nextText === currentText) {
+      return { written: false, merged: false, conflicts: [], ranksRepaired: 0 }
+    }
     await atomicWrite(loaded.path, nextText)
-    return { written: true, merged: false, conflicts: [] }
+    return { written: true, merged: false, conflicts: [], ranksRepaired: 0 }
   }
 
   // Someone wrote while we were working. Merge rather than clobber.
@@ -129,10 +138,20 @@ export async function saveWeekspan(loaded: LoadedWeekspan, next: Weekspan): Prom
   const mergedText = serialize(result.merged)
 
   if (mergedText === currentText) {
-    return { written: false, merged: true, conflicts: result.conflicts }
+    return {
+      written: false,
+      merged: true,
+      conflicts: result.conflicts,
+      ranksRepaired: result.stats.ranksRepaired,
+    }
   }
   await atomicWrite(loaded.path, mergedText)
-  return { written: true, merged: true, conflicts: result.conflicts }
+  return {
+    written: true,
+    merged: true,
+    conflicts: result.conflicts,
+    ranksRepaired: result.stats.ranksRepaired,
+  }
 }
 
 /**

@@ -119,9 +119,11 @@ describe('defaultInsertBeforeId', () => {
 
 describe('defaultInsertAnchor — both neighbours, not just one', () => {
   it('names the predecessor as well, so the item lands IN the gap', () => {
-    // The bug this exists for: `insertItem` with only a beforeId has no lower
-    // bound, so rankForInsert(null, anchor) produced a rank below every root and
-    // the new item appeared at the very top of the list instead.
+    // The bug this exists for: `insertItem` with only a beforeId used to have no
+    // lower bound, so rankForInsert(null, anchor) produced a rank below every
+    // root and the new item appeared at the very top of the list instead.
+    // `rankForInsert` resolves that itself now; the pair is still what this
+    // function promises to return.
     const w = ws([
       { id: 'a', marks: due('2026-08-25') },
       { id: 'b', marks: due('2026-08-27') },

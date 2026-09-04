@@ -31,6 +31,12 @@ export function commitEdit(
   weekspan: Weekspan,
   target: EditTarget,
   title: string,
+  /**
+   * Called instead of writing when the insert is refused. Optional only so the
+   * pure tests can ignore it — every real caller passes one, because a refusal
+   * the user cannot see is indistinguishable from a broken app.
+   */
+  onRefused?: (reason: string) => void,
 ): Weekspan | null {
   const trimmed = title.trim()
 
@@ -57,9 +63,12 @@ export function commitEdit(
       ...(target.parentId ? { parentId: target.parentId } : {}),
       ...(target.projectId != null ? { projectId: target.projectId } : {}),
     }).weekspan
-  } catch {
-    // insertItem throws on a bad anchor or blank title. Refusing to write is
-    // right; letting it escape into a render is not.
+  } catch (err) {
+    // insertItem throws on a bad anchor. Refusing to write is right, and
+    // letting the throw escape into a render is not — but swallowing it whole
+    // was worse than either: a file with two items sharing a rank presented as
+    // "Enter does nothing", with no message and nothing in the console.
+    onRefused?.(err instanceof Error ? err.message : String(err))
     return null
   }
 }

@@ -61,8 +61,10 @@ export {
   rankBetween,
   rankForInsert,
   rankSequence,
+  repairDuplicateRanks,
   siblingsOf,
 } from './rank.js'
+export type { RankRepair } from './rank.js'
 
 export {
   clearMark,

@@ -73,8 +73,7 @@ export function indentItem(weekspan: Weekspan, itemId: string): Weekspan | null 
   const newParent = precedingRoot(weekspan, itemId)!
 
   const newSiblings = siblingsOf(weekspan.items, newParent.id)
-  const lastSibling = newSiblings[newSiblings.length - 1] ?? null
-  const rank = rankForInsert(lastSibling, null)
+  const rank = rankForInsert(null, null, newSiblings)
 
   return {
     ...weekspan,
@@ -102,7 +101,7 @@ export function outdentItem(weekspan: Weekspan, itemId: string): Weekspan | null
   const roots = siblingsOf(weekspan.items, null)
   const parentIdx = roots.findIndex((r) => r.id === formerParentId)
   const nextRoot = parentIdx >= 0 ? (roots[parentIdx + 1] ?? null) : null
-  const rank = rankForInsert(formerParent, nextRoot)
+  const rank = rankForInsert(formerParent, nextRoot, roots)
 
   return {
     ...weekspan,

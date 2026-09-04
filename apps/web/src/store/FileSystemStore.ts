@@ -88,7 +88,7 @@ export class FileSystemStore implements FileStore {
       if (next !== (current ?? '')) {
         await this.writeText(next)
       }
-      return { text: next, merged: false, conflicts: [] }
+      return { text: next, merged: false, conflicts: [], ranksRepaired: 0 }
     }
 
     // Someone else — another tab, the CLI, an agent — wrote while we were
@@ -104,7 +104,12 @@ export class FileSystemStore implements FileStore {
     if (mergedText !== (current ?? '')) {
       await this.writeText(mergedText)
     }
-    return { text: mergedText, merged: true, conflicts: result.conflicts }
+    return {
+      text: mergedText,
+      merged: true,
+      conflicts: result.conflicts,
+      ranksRepaired: result.stats.ranksRepaired,
+    }
   }
 
   /** Write one closed-out week's archive to `archive/<week>.json` beside this file. Refuses to overwrite. */

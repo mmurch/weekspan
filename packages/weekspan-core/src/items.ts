@@ -80,10 +80,12 @@ export function defaultInsertBeforeId(
 /**
  * The full anchor pair for a default insert — both neighbours, not just one.
  *
- * `insertItem` with only a `beforeId` does NOT mean "immediately before that
- * item": `rankForInsert(null, anchor)` has no lower bound, so it produces a
- * rank below EVERY existing root and the new item lands at the very top of the
- * list. Naming the predecessor as well is what pins it into the one-slot gap.
+ * Naming both neighbours pins the new item into the one-slot gap. It used to be
+ * the ONLY thing that did: `rankForInsert(null, anchor)` read a missing lower
+ * bound as "below everything" and dropped the item at the top of the list.
+ * `rankForInsert` now resolves an unnamed bound from the rank scope, so a bare
+ * `beforeId` does mean "immediately before that item" — but naming the pair is
+ * still cheaper (no lookup) and says plainly which gap was meant.
  *
  * Returns a spreadable fragment with keys ABSENT rather than undefined, because
  * `insertItem` is compiled under `exactOptionalPropertyTypes`.

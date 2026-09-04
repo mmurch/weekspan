@@ -173,7 +173,7 @@ describe('FileSystemStore — write, unchanged underneath', () => {
 
     const result = await store.write(nextText, baselineText)
 
-    expect(result).toEqual({ text: nextText, merged: false, conflicts: [] })
+    expect(result).toEqual({ text: nextText, merged: false, conflicts: [], ranksRepaired: 0 })
     expect(file.content).toBe(nextText) // actually landed on "disk"
     expect(file.writeCount).toBe(1)
   })

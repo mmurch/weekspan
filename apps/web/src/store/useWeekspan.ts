@@ -4,8 +4,10 @@ import {
   ParseError,
   merge,
   parse,
+  repairDuplicateRanks,
   serialize,
   type ArchiveFile,
+  type RankRepair,
   type Weekspan,
 } from '@weekspan/weekspan-core'
 import type { FileStore, StoreStatus, WriteResult } from './FileStore.js'
@@ -75,6 +77,23 @@ export interface WeekspanStore {
   reload: () => Promise<void>
   /** Conflicts from the most recent write, for the UI to surface. */
   lastConflicts: WriteResult['conflicts']
+  /**
+   * Ranks rewritten by the repair on the most recent load. Non-empty means the
+   * file on disk was already fixed — the UI's job is only to say so, since a
+   * silent repair of the ordering spine is exactly the kind of change a user
+   * should be told about.
+   */
+  lastRepairs: readonly RankRepair[]
+  /**
+   * Ranks the most recent WRITE's merge had to separate because both writers
+   * minted the same key.
+   *
+   * The 2s poll merges too, and repairs there as well — it just has no clean
+   * way to report a count out of a `setStatus` updater, and does not need one:
+   * the repair is already in memory, so the collision can never reach disk
+   * unrepaired, and the next write reports through this.
+   */
+  lastRanksRepaired: number
   /** True when the last write had to merge in someone else's changes. */
   lastMerged: boolean
   /** Step back one change. A no-op when there is nothing to undo. */
@@ -98,6 +117,8 @@ const MAX_HISTORY = 50
 export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): WeekspanStore {
   const [status, setStatus] = useState<StoreStatus>({ kind: 'unbound' })
   const [lastConflicts, setLastConflicts] = useState<WriteResult['conflicts']>([])
+  const [lastRepairs, setLastRepairs] = useState<readonly RankRepair[]>([])
+  const [lastRanksRepaired, setLastRanksRepaired] = useState(0)
   const [lastMerged, setLastMerged] = useState(false)
 
   /** Exactly what we last read. The merge base, and the staleness reference. */
@@ -115,6 +136,7 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
   const load = useCallback(async (): Promise<void> => {
     // Any (re)load means the states we remember are not this file's states.
     forgetHistory()
+    setLastRepairs([])
     if (!store) {
       setStatus({ kind: 'unbound' })
       return
@@ -126,8 +148,27 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
         setStatus({ kind: 'unbound' })
         return
       }
-      baseline.current = text
-      setStatus({ kind: 'ready', weekspan: parse(text) })
+      const parsed = parse(text)
+
+      // Two items sharing a rank is RECOVERABLE, so repair it rather than
+      // refusing to open the ledger — `parse` rejecting it would have turned a
+      // broken Enter key into a file that will not open at all, and the files
+      // that need this were written by the app's own former unbounded append,
+      // not by hand. The repair is written back so the next session, the CLI
+      // and any agent all see a healthy file.
+      const repaired = repairDuplicateRanks(parsed.items)
+      if (repaired.repairs.length === 0) {
+        baseline.current = text
+        setStatus({ kind: 'ready', weekspan: parsed })
+        return
+      }
+
+      const next: Weekspan = { ...parsed, items: repaired.items }
+      setStatus({ kind: 'ready', weekspan: next })
+      setLastRepairs(repaired.repairs)
+      const result = await store.write(serialize(next), text)
+      baseline.current = result.text
+      if (result.merged) setStatus({ kind: 'ready', weekspan: parse(result.text) })
     } catch (err) {
       setStatus(describe(err))
     }
@@ -158,6 +199,7 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
         baseline.current = result.text
         setLastConflicts(result.conflicts)
         setLastMerged(result.merged)
+        setLastRanksRepaired(result.ranksRepaired)
         // A merge means disk now holds something other than what we sent, so the
         // merged result — not our optimistic copy — becomes the truth. Every
         // snapshot we hold predates that other writer, so the history goes too.
@@ -233,6 +275,7 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
         baseline.current = result.text
         setLastConflicts(result.conflicts)
         setLastMerged(result.merged)
+        setLastRanksRepaired(result.ranksRepaired)
         setStatus({ kind: 'ready', weekspan: result.merged ? parse(result.text) : next.weekspan })
       } catch (err) {
         setStatus(describe(err))
@@ -285,6 +328,8 @@ export function useWeekspan(store: FileStore | null, pollMs = POLL_MS): Weekspan
     mutateWithArchives,
     reload: load,
     lastConflicts,
+    lastRepairs,
+    lastRanksRepaired,
     lastMerged,
     undo,
     redo,

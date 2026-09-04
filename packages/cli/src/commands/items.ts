@@ -114,11 +114,11 @@ export async function runAdd(
           EXIT.USAGE,
         )
       }
-      rank = after
-        ? rankForInsert(anchor, scope[idx + 1] ?? null)
-        : rankForInsert(idx > 0 ? scope[idx - 1]! : null, anchor)
+      // Only the named side is passed; `rankForInsert` resolves the other from
+      // `scope`, which is the same neighbour lookup this used to do by hand.
+      rank = after ? rankForInsert(anchor, null, scope) : rankForInsert(null, anchor, scope)
     } else {
-      rank = rankForInsert(scope[scope.length - 1] ?? null, null)
+      rank = rankForInsert(null, null, scope)
     }
 
     const recurrence = buildRecurrence(values as Record<string, unknown>, ctx.today)
