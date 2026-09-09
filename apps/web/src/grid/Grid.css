@@ -364,21 +364,7 @@
 
 .ws-note-bullet { color: var(--ws-ink-4); margin-right: 4px; }
 
-.ws-links { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-
-.ws-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px 1px 3px;
-  border: 1px solid var(--ws-hair-strong);
-  border-radius: 11px;
-  background: var(--ws-chip-bg);
-  font: 400 10px/1.5 'IBM Plex Sans', sans-serif;
-  color: var(--ws-ink-2);
-}
-
-.ws-link-dot { width: 11px; height: 11px; border-radius: 2px; background: var(--ws-link-dot); }
+/* Link chips live in ../links/LinkChip.css, with the component that draws them. */
 
 /* ---- cells ----------------------------------------------------------- */
 

@@ -14,11 +14,24 @@ export function InlineEdit({
   placeholder,
   onCommit,
   onCancel,
+  onPasteUrl,
 }: {
   initial: string
   placeholder?: string
   onCommit: (title: string) => void
   onCancel: () => void
+  /**
+   * Offered a paste before the textarea takes it. Return true to say "I turned
+   * this into a link chip" and the text is not inserted; false lets the normal
+   * paste happen untouched.
+   *
+   * This exists because clicking a task's text is how you start editing it, so
+   * "click the task, paste the link" is the gesture people actually reach for.
+   * Without this hook that gesture types a 90-character URL into the title.
+   * Only wired for existing item titles — a draft row has no item to attach a
+   * link to yet, and notes are prose.
+   */
+  onPasteUrl?: (data: DataTransfer) => boolean
 }): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null)
   const committed = useRef(false)
@@ -48,6 +61,10 @@ export function InlineEdit({
       placeholder={placeholder ?? 'New item…'}
       rows={1}
       onInput={(e) => grow(e.currentTarget)}
+      onPaste={(e) => {
+        if (!onPasteUrl || !e.clipboardData) return
+        if (onPasteUrl(e.clipboardData)) e.preventDefault()
+      }}
       onBlur={() => finish(true)}
       onKeyDown={(e) => {
         // Enter commits; Shift+Enter is a literal newline, matching quick capture.

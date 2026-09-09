@@ -33,6 +33,8 @@ import {
   type MarkDrop,
 } from './interaction/useDragPreview.js'
 import { moveMark } from './interaction/markDrag.js'
+import { addLink, removeLink, setLinkTitle } from '@weekspan/weekspan-core'
+import { linkFromClipboard } from './links/clipboard.js'
 import { reorderItem } from './interaction/reorder.js'
 import { commitNeighbours } from './interaction/dragPreview.js'
 import type { RowVM } from './grid/viewModel.js'
@@ -277,6 +279,8 @@ function Workspace({
   )
   const [filterText, setFilterText] = useState('')
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
+  /** The link chip being renamed, by (item, url). See `GridInteraction`. */
+  const [renamingLink, setRenamingLink] = useState<{ itemId: string; url: string } | null>(null)
   const [notice, setNotice] = useState<NoticeMessage | null>(null)
   const noticeId = useRef(0)
 
@@ -485,6 +489,36 @@ function Workspace({
     return () => window.removeEventListener('keydown', onKey)
   }, [weekspan, selection, today, mutate, undo, redo])
 
+  /**
+   * Paste a URL onto the selected row and it becomes a link chip.
+   *
+   * Deliberately narrow, because the last thing this app did with clever text
+   * handling was guess projects out of typed words and get it wrong: the paste
+   * must be a BARE http(s) URL and nothing else (`urlFromPaste`), there must
+   * already be a selected row to attach it to, and focus must not be in a text
+   * field — where Cmd+V has to keep meaning "paste text". Anything short of
+   * all three falls through to the browser's own paste, untouched.
+   *
+   * The title is whatever the clipboard's `text/html` flavour carried, which
+   * is a real document title when you copied the link from inside a doc, from
+   * Gmail or from Slack. Copying out of the address bar carries no title, so
+   * the chip lands as "Google Doc" and you click it to rename. It is never
+   * fetched — see `links.ts` in weekspan-core for why that cannot work here.
+   */
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent): void {
+      if (isTypingTarget(e.target)) return
+      const sel = selection
+      if (!sel) return
+      const link = linkFromClipboard(e.clipboardData)
+      if (!link) return
+      e.preventDefault()
+      void mutate((w) => addLink(w, sel.itemId, link))
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [selection, mutate])
+
   /** Menu entries route through the same pure reducer the keyboard uses, so the
    *  two paths cannot drift (e.g. vacation-day refusal applying to one but not
    *  the other). */
@@ -664,6 +698,28 @@ function Workspace({
                 }
                 return result.weekspan
               })
+            }}
+            onPasteLink={(itemId, data) => {
+              // Same resolution as the selected-row paste, so the two gestures
+              // cannot produce different chips for the same clipboard.
+              const link = linkFromClipboard(data)
+              if (!link) return false
+              void mutate((w) => addLink(w, itemId, link))
+              return true
+            }}
+            editingLink={renamingLink}
+            onStartRenameLink={(itemId, url) => setRenamingLink({ itemId, url })}
+            onCancelRenameLink={() => setRenamingLink(null)}
+            onCommitRenameLink={(title) => {
+              const target = renamingLink
+              setRenamingLink(null)
+              if (!target) return
+              // A blank title is refused by `setLinkTitle` (an unlabelled chip
+              // is unreadable), which shows up here as a plain no-op write.
+              void mutate((w) => setLinkTitle(w, target.itemId, target.url, title))
+            }}
+            onRemoveLink={(itemId, url) => {
+              void mutate((w) => removeLink(w, itemId, url))
             }}
             editingNotesId={editingNotesId}
             onStartEditNotes={(itemId) => setEditingNotesId(itemId)}

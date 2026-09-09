@@ -7,6 +7,7 @@ import { isItemSelected } from '../interaction/selection.js'
 import { InlineEdit } from '../add/InlineEdit.js'
 import type { ProjectRow } from './projectView.js'
 import { dividerKey } from '../interaction/projectDragPreview.js'
+import { LinkChip } from '../links/LinkChip.js'
 
 export interface GridInteraction {
   /** Currently selected cell, or null. */
@@ -102,6 +103,21 @@ export interface GridInteraction {
   onPickColor?: (projectId: string | null, x: number, y: number) => void
   /** Clicking a date header toggles vacation for that day. */
   onToggleVacation?: (date: IsoDate) => void
+  /**
+   * Link chips. `editingLink` names the one being renamed — by (item, url),
+   * since url is the identity `mergeLinks` keys on and the same document can
+   * legitimately be attached to two different items.
+   */
+  editingLink?: { itemId: string; url: string } | null
+  /**
+   * A paste inside an item's title editor. Returns true when it consumed the
+   * paste as a link chip. See `InlineEdit`'s `onPasteUrl`.
+   */
+  onPasteLink?: (itemId: string, data: DataTransfer) => boolean
+  onStartRenameLink?: (itemId: string, url: string) => void
+  onCommitRenameLink?: (title: string) => void
+  onCancelRenameLink?: () => void
+  onRemoveLink?: (itemId: string, url: string) => void
   /** Notes editing, mirroring title editing. */
   editingNotesId?: string | null
   onStartEditNotes?: (itemId: string) => void
@@ -397,6 +413,9 @@ function Row({
             initial={row.title}
             onCommit={(t) => interaction.onCommitEdit?.(t)}
             onCancel={() => interaction.onCancelEdit?.()}
+            {...(interaction.onPasteLink
+              ? { onPasteUrl: (d: DataTransfer) => interaction.onPasteLink!(row.id, d) }
+              : {})}
           />
         ) : (
           <span
@@ -431,10 +450,18 @@ function Row({
         {row.links.length > 0 ? (
           <span className="ws-links">
             {row.links.map((link) => (
-              <span className="ws-link" key={link.url}>
-                <span className="ws-link-dot" />
-                {link.title}
-              </span>
+              <LinkChip
+                key={link.url}
+                link={link}
+                editing={
+                  interaction.editingLink?.itemId === row.id &&
+                  interaction.editingLink?.url === link.url
+                }
+                onStartRename={() => interaction.onStartRenameLink?.(row.id, link.url)}
+                onCommitRename={(t) => interaction.onCommitRenameLink?.(t)}
+                onCancelRename={() => interaction.onCancelRenameLink?.()}
+                onRemove={() => interaction.onRemoveLink?.(row.id, link.url)}
+              />
             ))}
           </span>
         ) : null}

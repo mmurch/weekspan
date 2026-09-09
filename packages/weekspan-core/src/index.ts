@@ -79,6 +79,9 @@ export {
   setSkip,
 } from './marks.js'
 
+export type { LinkKind, UrlClassification } from './links.js'
+export { LINK_KINDS, addLink, classifyUrl, removeLink, setLinkTitle } from './links.js'
+
 export {
   PROJECT_COLOR_TOKENS,
   addProject,

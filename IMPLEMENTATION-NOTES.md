@@ -1156,3 +1156,73 @@ commit share one copy of the `minimalMoveRank` no-op rule.
 `scripts/probe-mark-drag.mjs` covers what unit tests structurally cannot: that the preview draws
 the chip on the hovered column before release, that a click still cycles, and that one Ctrl+Z
 reverses a whole diagonal gesture.
+
+## Link chips — and why the title cannot be fetched
+
+Asked as: "I want google docs links to become mini previews so that it shows a doc icon and the
+title of the doc if I paste a link. Is that possible with the current hosting/auth approach?"
+
+The icon, yes. The title automatically, no — and the reasons were measured against the real
+network rather than assumed, because the first answer to this question was too quick.
+
+| Attempt | Result |
+|---|---|
+| `fetch` docs.google.com from `file://` | Blocked — origin is `null` |
+| `fetch` from an `https://` page, no credentials | Succeeds, body readable |
+| Same fetch with `credentials: 'include'` | **Fails** — Google sends `ACAO: *`, which CORS forbids with credentials |
+| Drive API `files.get?fields=name`, unauthenticated | 403 `"Method doesn't allow unregistered callers"` |
+| Google Docs oEmbed | Does not exist |
+
+The middle two are the whole story, and they are easy to misread. A cross-origin `fetch` defaults
+to `credentials: 'same-origin'`, so the request that "succeeds" goes out **logged out** — being
+signed into Docs in the same browser is irrelevant, because the fetch is never your session. And
+it cannot be made into your session: `Access-Control-Allow-Origin: *` and credentials are
+mutually exclusive by specification.
+
+The decisive detail is the FAILURE MODE. An anonymous fetch of a doc you cannot see does not
+error; it returns a page whose title is `Page not found`. A scraper would cache that string into
+the ledger, permanently, with no signal that anything went wrong. That is worse than not having
+the feature, and it is why no fetch path is implemented even as a best-effort.
+
+OAuth is the only thing that would work, and only on a hosted or `localhost` origin — a `file://`
+page has a null origin that Google will not let you register, the same wall
+`docs/google-drive-sync.md` hit from the sync side. It was ruled out here on the user's own
+constraints: the single file over `file://` is how this actually gets used, and creating a Google
+Cloud OAuth client is not available. (For the record, that doc's "OAuth is a real project"
+verdict was about full read/write sync — token refresh, writes, conflicts, quota. Read-only
+metadata is much smaller, and if the hosting story ever changes this is worth revisiting.)
+
+### What it does instead
+
+- **Kind from the URL, offline and exact.** Google puts the product in the first path segment of
+  `docs.google.com`, so `/document/` vs `/spreadsheets/` vs `/presentation/` is a read, not a
+  heuristic. That is `classifyUrl`, and it is the half that makes a chip recognisable at a glance.
+- **Title from the clipboard, when the clipboard has one.** A copy carries flavours: `text/plain`
+  is the bare URL, but `text/html` often holds the actual anchor — `<a href="…">Real Title</a>` —
+  which is what you get copying from inside a Doc, from Gmail, from Slack, or from a smart chip.
+  `titleFromClipboardHtml` reads it, matching anchors on the Google document id rather than the
+  raw string, since the two flavours routinely disagree about `/edit` vs `/view` and `?usp=`.
+- **The kind label otherwise.** A chip that says "Google Doc" reads as obviously provisional,
+  which is the honest signal. The raw URL is never used as a title.
+- **Rename is a first-class path, not a repair.** Anything copied from the address bar arrives on
+  a placeholder, so clicking the chip title to rename has to be as ordinary as editing an item
+  title — which is exactly the idiom it borrows.
+
+Two paste gestures, one resolution function so they cannot disagree: onto a **selected row**
+(window-level, refused while typing), and **inside the title editor**, which is the gesture people
+actually reach for — clicking a task's text is how you start editing it, so without that hook
+"click the task, paste the link" typed a 90-character URL into the title.
+
+`urlFromPaste` is deliberately strict: the whole trimmed paste must be one http(s) URL. The
+handler takes the text away and turns it into a chip, so pasting a sentence that merely mentions
+a link must paste the sentence. This is the same lesson as the quick-capture project matcher one
+section up — the cost of a false positive is silent data loss, so the trigger has to be
+unambiguous rather than clever.
+
+`titleFromClipboardHtml` parses with a narrow regex rather than `DOMParser` because this
+workspace has no jsdom, and an untested clipboard parser is precisely the thing that would
+quietly write garbage into the file.
+
+The kind colours in `LinkChip.css` are literal hex rather than theme tokens — the one deliberate
+exception to this app's token discipline. Docs blue / Sheets green / Slides yellow is *semantic*;
+re-tinting per theme would make each theme's chips mean something different.
