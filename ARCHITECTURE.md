@@ -325,6 +325,13 @@ is easier than hand-editing, and the file is loud about it.
   so an arrow keypress does not re-render the whole grid.
 - **Monorepo** (`packages/weekspan-core`, later `packages/cli` and `apps/web`), since three
   consumers of one core is the whole architecture.
+- **Quick capture infers a DATE, never a project.** *Conflicts with the handoff*
+  (`design_handoff_todo_ledger/README.md`, "C · Quick capture", which tints a matched project
+  name blue). Matching typed words against project names collides with ordinary English — with a
+  project called `Work`, "finish deck work" filed itself and lost a word — and the title being
+  the only input meant there was no way to say "I meant that literally". The project is now an
+  explicit, mutually-exclusive tick below the input, defaulting to none. Day-words stayed: they
+  are unambiguous, and no title needs the bare word `thu` preserved. See IMPLEMENTATION-NOTES.md.
 
 ## Still open
 

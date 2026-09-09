@@ -1060,3 +1060,99 @@ under Ctrl+Z.
 `isTypingTarget` existed as two byte-identical private copies, one carrying a comment saying the
 other file was off-limits to edit at the time and that the two must be hand-synced. That
 constraint no longer applied, and Cmd+Z needed a third caller, so it is now one module.
+
+## Quick capture no longer guesses a project
+
+Reported as: "if i use certain phrases, those words get highlighted and it seems to think i am
+creating a project or creating an item under a project… the interaction is super awkward."
+
+`parseCapture` matched every typed word against project names and unique prefixes. A hit was
+highlighted blue, stripped out of the title, and became the new item's `projectId`. The
+mechanism is fine in the abstract and wrong in practice, for three compounding reasons:
+
+- **Ordinary English collides with project names.** With a project called `Work`, "finish deck
+  work" filed itself and lost a word. Prefix matching widened this enormously — any project
+  beginning with "we", "ad", "ki" claims a very common word.
+- **There was no way to opt out.** The title is the only input, so a title that merely *mentions*
+  a project could not be typed at all. You do not fight a picker; you do fight a parser.
+- **Silent and destructive together.** The word vanished from the title *and* a filing decision
+  was made, both without confirmation, both easy to miss until later.
+
+Now the project is an explicit tick: `ProjectPicker` lists every project as a checkbox below the
+input, nothing ticked by default, and nothing typed can move it. The boxes are mutually
+exclusive — ticking one unticks the other — because an item has exactly one `projectId`, so the
+control cannot promise a state the data model will not hold. They are checkboxes rather than
+radios precisely because **"no project" has to be the state you reach by doing nothing**, and a
+radio group has no such state once a choice is made.
+
+**Dates stayed inferred.** A day-word is unambiguous, self-evident from the amber highlight, and
+has no equivalent "I meant that literally" failure — nobody's title needs the bare word `thu`
+preserved the way it needs the word `work`. So `Token` lost its `project` kind and kept `due`,
+and `capture.ts` shed its `projects` argument entirely.
+
+Bulk import follows: `parseBulk` no longer resolves a project per line, and `commitBulk` takes
+one `projectId` applied to every created item — the same single tick, since a batch pasted out
+of a spreadsheet belongs to one project or to none.
+
+This CONFLICTS with the handoff (`design_handoff_todo_ledger/README.md`, "C · Quick capture",
+which specifies `weymouth` tinted blue). The handoff is a design mock that never had a project
+named after a word anyone would type.
+
+`scripts/probe-capture.mjs` drives the built app, because the failure was end-to-end: the parser
+being clean is not the same as the overlay offering the opt-in and the item landing unfiled.
+
+## Marks are draggable — sideways for the day, vertically for priority
+
+Requested as: "Dragging left-right should change the day it is due… dragging vertically should
+change its priority just like the grip in the left. Dragging diagonally should achieve both
+smoothly. I recognized this might be an odd interaction but i keep trying to do it with my mouse."
+
+It is not an odd interaction: it is the grid's own geometry taken literally. Columns already ARE
+days and rows already ARE the priority order, so a chip dragged across columns changing its day
+is the only thing that motion could honestly mean.
+
+**Diagonal is not a third mode.** The two axes are resolved independently from the same pointer
+position every frame — `dateForX` against columns measured at pointerdown, `indexFor` against
+rows measured at the same moment — and then committed together. Building it as three gestures
+(horizontal, vertical, and a diagonal that blends them) would have needed an axis-lock heuristic,
+which is exactly the thing that makes this feel bad in other apps.
+
+`useDragPreview` grew a second entry point rather than a sibling hook. Everything that makes a
+drag feel right is lifecycle — the 4px threshold, auto-scroll at the edges, Escape to cancel,
+"landed back where it started writes nothing" — and a second copy of that would drift. The grip
+passes `from: null` and gets the old vertical-only behaviour; a chip passes its date and gets
+both. Three things did have to change:
+
+- **The threshold is now distance, not `|Δy|`.** A purely sideways chip drag is a real edit, and
+  the old check would have discarded it as an unmoved click.
+- **The release swallows one click.** A pointerup on a chip is still followed by a `click` on the
+  cell beneath, which would select or cycle the mark just dropped. One capture-phase listener
+  eats exactly that click and removes itself — guarded on having actually moved, so a chip that
+  was merely clicked still cycles, as it always has.
+- **Both halves land in ONE `mutate`.** Two calls would be two file writes, two chances to
+  conflict in a synced folder, and — worst — two undo steps, so Cmd+Z would undo half a gesture.
+  The reorder is applied on top of the mark move's result, never against the original weekspan.
+
+`moveMark` refuses a due or a done onto a vacation day, which is the same refusal `applyMark`
+makes for the keyboard and the cell menu; a skip is allowed through in both. A GENERATED
+occurrence is not draggable at all — there is no stored mark to move, and minting one at the
+destination would silently convert a recurrence rule into a hand-placed date. That gate sets the
+grab cursor and the pointer handlers together, so the affordance never promises what the drop
+would refuse.
+
+`autoscroll.ts` grew a second axis, and it was not optional: the four-week window is routinely
+wider than the viewport, so without horizontal auto-scroll the furthest day you could move a mark
+to was whichever one happened to be on screen. Both axes now share one `axisDelta` — same ramp,
+same zone-halving guard. Two details it does NOT share: the left zone starts at the right edge of
+the FROZEN item column (measured from the DOM, not hard-coded), since that column is sticky and
+overlays the true edge of the scroll box, and the zone is 40px rather than 72 because a day is
+only 38px wide and a generous zone would make the outermost visible days impossible to drop on.
+Horizontal scrolling runs only for a mark drag; shoving the grid sideways under a row being
+reordered is motion nobody asked for.
+
+`reorderItem` came out of `App` into `interaction/reorder.ts` so the grip commit and the mark
+commit share one copy of the `minimalMoveRank` no-op rule.
+
+`scripts/probe-mark-drag.mjs` covers what unit tests structurally cannot: that the preview draws
+the chip on the hovered column before release, that a click still cycles, and that one Ctrl+Z
+reverses a whole diagonal gesture.

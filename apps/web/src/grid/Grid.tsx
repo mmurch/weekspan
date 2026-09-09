@@ -28,6 +28,21 @@ export interface GridInteraction {
   /** Pointer handlers for the drag grip, from `useDragPreview`. */
   gripHandlers?: (itemId: string) => { onPointerDown: (e: React.PointerEvent) => void }
   /**
+   * Pointer handlers for dragging a MARK chip, from `useDragPreview`. A chip
+   * drags on both axes at once: sideways it changes the day, vertically it
+   * reorders the row exactly as the grip does.
+   */
+  markHandlers?: (
+    itemId: string,
+    date: IsoDate,
+  ) => { onPointerDown: (e: React.PointerEvent) => void }
+  /**
+   * The in-flight mark drag. While set, the chip is drawn on `to` (the day
+   * under the pointer) instead of `from` — the same "the preview IS the
+   * answer" rule the row reordering follows.
+   */
+  markDrag?: { itemId: string; from: IsoDate; to: IsoDate } | null
+  /**
    * Rows in prospective order while a drag is in progress. When set, these are
    * rendered instead of `vm.rows` — so the row visibly occupies its new position
    * as the pointer moves, rather than a separate line hinting at it.
@@ -194,12 +209,50 @@ function WeekHeader({
   )
 }
 
-function Chip({ cell }: { cell: CellVM }): JSX.Element | null {
+const CHIP_LABEL = { done: '✓', due: 'DUE', skip: 'SKIP' } as const
+
+/**
+ * The mark itself.
+ *
+ * A chip backed by an EXPLICIT mark is draggable; one a recurrence rule
+ * generated is not, because there is no stored mark to move and inventing one
+ * at the destination would quietly turn a rule into a hand-placed date (see
+ * `markDrag.ts`). `draggable` therefore gates both the handlers and the grab
+ * cursor together, so the affordance never promises something the drop refuses.
+ */
+function Chip({
+  cell,
+  itemId,
+  handlers,
+  lifted,
+}: {
+  cell: CellVM
+  itemId: string
+  handlers?: GridInteraction['markHandlers'] | undefined
+  /** Drawn at the pointer's column mid-drag. */
+  lifted?: boolean
+}): JSX.Element | null {
   if (cell.kind === null) return null
-  const generated = cell.generated ? ' ws-chip--generated' : ''
-  if (cell.kind === 'done') return <div className={`ws-chip ws-chip--done${generated}`}>✓</div>
-  if (cell.kind === 'due') return <div className={`ws-chip ws-chip--due${generated}`}>DUE</div>
-  return <div className={`ws-chip ws-chip--skip${generated}`}>SKIP</div>
+  const draggable = handlers !== undefined && !cell.generated
+  const cls = [
+    'ws-chip',
+    `ws-chip--${cell.kind}`,
+    cell.generated ? 'ws-chip--generated' : '',
+    draggable ? 'ws-chip--draggable' : '',
+    lifted ? 'ws-chip--lifted' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <div
+      className={cls}
+      {...(draggable ? handlers(itemId, cell.date) : {})}
+      {...(draggable ? { title: 'Drag sideways to change the day, up/down to reprioritise' } : {})}
+    >
+      {CHIP_LABEL[cell.kind]}
+    </div>
+  )
 }
 
 function Cell({
@@ -207,6 +260,11 @@ function Cell({
   itemId,
   selected,
   onCellMouse,
+  markHandlers,
+  /** The chip lifted off another column and hovering here. Overrides `cell`'s own. */
+  incomingChip,
+  /** This cell's chip has been lifted away to another column. */
+  chipLifted,
 }: {
   cell: CellVM
   itemId: string
@@ -218,6 +276,9 @@ function Cell({
     x: number,
     y: number,
   ) => void
+  markHandlers?: GridInteraction['markHandlers'] | undefined
+  incomingChip?: CellVM | null
+  chipLifted?: boolean
 }): JSX.Element {
   const cls = [
     'ws-cell',
@@ -263,7 +324,11 @@ function Cell({
         if (intent) onCellMouse?.(itemId, cell.date, intent, e.clientX, e.clientY)
       }}
     >
-      <Chip cell={cell} />
+      {incomingChip ? (
+        <Chip cell={incomingChip} itemId={itemId} lifted />
+      ) : chipLifted ? null : (
+        <Chip cell={cell} itemId={itemId} handlers={markHandlers} />
+      )}
     </div>
   )
 }
@@ -297,6 +362,24 @@ function Row({
   const barStyle = row.projectColorToken
     ? { ['--ws-bar-color' as string]: `var(--ws-${kebab(row.projectColorToken)})` }
     : undefined
+
+  /*
+   * Mid mark-drag, the chip is drawn on the column under the pointer rather
+   * than the one it came from. Both are null until the pointer has actually
+   * left the origin column, so a purely vertical chip drag looks like a plain
+   * grip drag — which is exactly what it is.
+   */
+  const md =
+    interaction.markDrag && interaction.markDrag.itemId === row.id && interaction.markDrag.to !== interaction.markDrag.from
+      ? interaction.markDrag
+      : null
+  const liftedFrom = md ? md.from : null
+  // The chip's own appearance travels with it: a done stays a ✓, a generated
+  // occurrence stays hollow. Only its column changes.
+  const draggedChip = md
+    ? (row.cells.find((c) => c.date === md.from) ?? undefined)
+    : undefined
+  const incoming = draggedChip ? { ...draggedChip, date: md!.to } : undefined
 
   return (
     <div className={`ws-row${dragging ? ' ws-row--dragging' : ''}`} data-row-id={row.id}>
@@ -364,6 +447,9 @@ function Row({
             interaction.selection?.itemId === row.id && interaction.selection?.date === cell.date
           }
           {...(interaction.onCellMouse ? { onCellMouse: interaction.onCellMouse } : {})}
+          {...(interaction.markHandlers ? { markHandlers: interaction.markHandlers } : {})}
+          chipLifted={liftedFrom === cell.date}
+          incomingChip={incoming && incoming.date === cell.date ? incoming : null}
           key={cell.date}
         />
       ))}

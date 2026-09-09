@@ -544,6 +544,34 @@ button.ws-week-close--blocked {
 .ws-grip:active { cursor: grabbing; }
 
 /*
+ * A mark chip is the grid's second grip: sideways it moves the mark between
+ * days, up and down it reorders the row exactly as the item-column grip does.
+ * `touch-action: none` is what stops the browser claiming the gesture as a
+ * scroll before the first pointermove ever reaches us — without it the
+ * horizontal half is unusable on a trackpad-driven touch surface.
+ *
+ * Only an EXPLICIT mark gets this. A generated occurrence has no stored mark
+ * to move, so it never gets the class and never shows a grab cursor.
+ */
+.ws-chip--draggable {
+  cursor: grab;
+  touch-action: none;
+}
+.ws-chip--draggable:active { cursor: grabbing; }
+
+/*
+ * The chip mid-flight, drawn on the column under the pointer rather than the
+ * one it came from. Lifted off the page rather than tinted: the chip's own
+ * colour is what says whether it is a due, a done or a skip, and recolouring
+ * it would destroy the one thing the preview is meant to show.
+ */
+.ws-chip--lifted {
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.28);
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 1px;
+}
+
+/*
  * The lifted row while dragging. Rows are `display: contents`, so the row itself
  * cannot be transformed — the styling has to go on its cells.
  */

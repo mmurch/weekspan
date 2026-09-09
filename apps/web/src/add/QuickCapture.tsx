@@ -26,27 +26,39 @@ import './QuickCapture.css'
  * the caller's concern.
  *
  * There's also a project-creation mode, toggled by a single `projectMode`
- * boolean that the "Project" checkbox and the `⌘⏎`/`Ctrl+⏎` shortcut both
+ * boolean that the "New project" checkbox and the `⌘⏎`/`Ctrl+⏎` shortcut both
  * read from and write to — deliberately ONE state, not two parallel paths
  * that could drift out of sync: ticking the checkbox makes plain `⏎` create a
- * project too, exactly as `⌘⏎` does. While in project mode, due/project TOKEN
- * PARSING IS SUPPRESSED (a project named "thu", or one whose name happens to
- * collide with an existing project, must not get silently mangled by
+ * project too, exactly as `⌘⏎` does. While in project mode, due TOKEN PARSING
+ * IS SUPPRESSED (a project named "thu" must not get silently mangled by
  * `parseCapture`) — the whole typed string becomes the project name.
+ *
+ * **Which project an item joins is an explicit tick, never inferred.** The
+ * `ProjectPicker` row lists every project as a checkbox; none ticked (the
+ * default) means no project. They are mutually exclusive because an item
+ * carries exactly one `projectId` — ticking one unticks the other, so the
+ * control can never promise a state the data model cannot hold. This replaced
+ * matching typed words against project names, which guessed wrong on ordinary
+ * English, ate the matched word out of the title, and gave no way to type a
+ * title that merely mentions a project. See `capture.ts` for the full
+ * reasoning. The same choice applies to a bulk import, where it lands on
+ * every created line.
  *
  * Bulk import mode: when the pasted/typed content has a newline AND more
  * than one non-blank line (the shape a copied spreadsheet range takes —
  * that's the whole reason this exists, migrating an existing todo list),
  * quick-capture switches from previewing ONE item to previewing a BATCH,
  * via `parseBulk` (per-line `parseCapture`, so each line still gets its own
- * due/project resolution). Plain `⏎` deliberately does NOT submit in this
+ * due resolution). Plain `⏎` deliberately does NOT submit in this
  * mode — it behaves like `⇧⏎` and inserts a newline instead — because there
  * is no undo in this app, and an accidental paste-and-enter must never be
  * able to write up to ~100 items in one keystroke. Creating requires an
  * explicit button, or `⌘⏎`/`⌘⌥⏎`. Import mode and `projectMode` are
  * mutually exclusive in practice (bulk-creating several projects at once
- * isn't a thing this does), so the project toggle is hidden while import
- * mode is active rather than trying to make the two combine.
+ * isn't a thing this does), so the "New project" toggle is hidden while
+ * import mode is active rather than trying to make the two combine. The
+ * project PICKER stays, since a batch lands in a project the same way a
+ * single item does.
  */
 
 const WEEKDAY_ABBR: Record<number, string> = {
@@ -81,18 +93,51 @@ function formatDue(due: IsoDate): string {
   return `${day} ${dayOfMonth} ${month}`
 }
 
-function resolvedLine(capture: Capture, projects: readonly Project[]): string {
+function resolvedLine(capture: Capture, project: Project | undefined): string {
   const parts: string[] = []
   if (capture.due !== undefined) parts.push(`due ${formatDue(capture.due)}`)
-  if (capture.projectId !== undefined) {
-    const project = projects.find((p) => p.id === capture.projectId)
-    if (project) parts.push(project.name)
-  }
+  parts.push(project ? project.name : 'no project')
   return parts.join(' · ')
 }
 
 /**
- * Render `value` with every `due`/`project` token wrapped in `<mark>`, and
+ * The opt-in project row.
+ *
+ * Rendered as checkboxes rather than a `<select>` or radio group because the
+ * common case is leaving every one of them alone: "no project" has to be the
+ * resting state you reach by doing nothing, and a radio group has no such
+ * state once a choice is made. They behave exclusively all the same — clicking
+ * a ticked box unticks it, clicking a different one moves the tick — since an
+ * item has exactly one `projectId`.
+ */
+function ProjectPicker({
+  projects,
+  selected,
+  onSelect,
+}: {
+  projects: readonly Project[]
+  selected: string | null
+  onSelect: (projectId: string | null) => void
+}): JSX.Element | null {
+  if (projects.length === 0) return null
+  return (
+    <div className="ws-capture-projects" role="group" aria-label="Project">
+      {projects.map((p) => (
+        <label className="ws-capture-project" key={p.id}>
+          <input
+            type="checkbox"
+            checked={selected === p.id}
+            onChange={() => onSelect(selected === p.id ? null : p.id)}
+          />
+          {p.name}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Render `value` with every `due` token wrapped in `<mark>`, and
  * everything else — including the exact original whitespace (newlines
  * included) — passed through untouched. This is the underlay that sits
  * beneath the real `<textarea>`; the two must render pixel-identical text,
@@ -119,16 +164,19 @@ function renderHighlighted(value: string, tokens: readonly Token[]): ReactNode[]
 }
 
 export interface QuickCaptureProps {
-  /** For resolving a typed project word/prefix and for the resolved-line project name. */
+  /** Offered as opt-in checkboxes. Never matched against the typed text. */
   projects: readonly Project[]
   today: IsoDate
   /**
    * `position` is 'top' on plain `⏎`, 'backlog' on `⌥⏎` (always 'top' for
    * `mode: 'project'` — backlog placement has no meaning for a project).
    * `mode` is 'project' when submitted via `⌘⏎`/`Ctrl+⏎` or with the
-   * "Project" checkbox ticked; in that case `capture.title` is the project
-   * name (untouched by due/project token parsing) and `capture.due` /
+   * "New project" checkbox ticked; in that case `capture.title` is the project
+   * name (untouched by due-token parsing) and `capture.due` /
    * `capture.projectId` are never set.
+   *
+   * For an item, `capture.projectId` is whatever the user ticked in the
+   * project row — absent when nothing is ticked, which is the default.
    */
   onSubmit: (capture: Capture, position: 'top' | 'backlog', mode: 'item' | 'project') => void
   /**
@@ -137,7 +185,11 @@ export interface QuickCaptureProps {
    * wired up a bulk-commit path yet still typechecks; without it, the
    * confirm controls render but do nothing when activated.
    */
-  onSubmitBulk?: (parse: BulkParse, position: 'top' | 'backlog') => void
+  onSubmitBulk?: (
+    parse: BulkParse,
+    position: 'top' | 'backlog',
+    projectId: string | null,
+  ) => void
   onClose: () => void
 }
 
@@ -166,13 +218,22 @@ export function QuickCapture({
   // checkbox and the `⌘⏎`/`Ctrl+⏎` shortcut read/write this ONE flag — never
   // two independently-tracked "is this a project" checks that could disagree.
   const [projectMode, setProjectMode] = useState(false)
+  // The ticked project, or null for none. Null is the default and the only
+  // resting state — nothing typed can move it.
+  const [projectId, setProjectId] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const underlayRef = useRef<HTMLDivElement>(null)
 
   // Parsed unconditionally (cheap, and needed for item-mode submits), but its
-  // due/project tokens are deliberately ignored below whenever `projectMode`
-  // or `importMode` is on — see the module doc.
-  const capture = useMemo(() => parseCapture(value, projects, today), [value, projects, today])
+  // due tokens are deliberately ignored below whenever `projectMode` or
+  // `importMode` is on — see the module doc.
+  const capture = useMemo(() => parseCapture(value, today), [value, today])
+
+  // A project deleted out from under an open overlay must not stay ticked and
+  // then be written to the new item. Falling back to null keeps the invariant
+  // that the tick always names a project that exists.
+  const selectedProject = projects.find((p) => p.id === projectId)
+  const effectiveProjectId = selectedProject ? projectId : null
 
   // Bulk import mode: a newline AND more than one non-blank line. A pasted
   // single title that merely happens to contain a blank line (or a trailing
@@ -186,8 +247,8 @@ export function QuickCapture({
   }, [value])
 
   const bulkParse = useMemo<BulkParse | null>(
-    () => (importMode ? parseBulk(value, projects, today) : null),
-    [importMode, value, projects, today],
+    () => (importMode ? parseBulk(value, today) : null),
+    [importMode, value, today],
   )
 
   useEffect(() => {
@@ -214,7 +275,7 @@ export function QuickCapture({
         if (!(e.metaKey || e.ctrlKey)) return
         e.preventDefault()
         if (!bulkParse || bulkParse.createCount === 0) return
-        onSubmitBulk?.(bulkParse, e.altKey ? 'backlog' : 'top')
+        onSubmitBulk?.(bulkParse, e.altKey ? 'backlog' : 'top', effectiveProjectId)
         return
       }
 
@@ -235,7 +296,17 @@ export function QuickCapture({
 
       const title = normalizeTitle(capture.title)
       if (title === '') return
-      onSubmit({ ...capture, title }, e.altKey ? 'backlog' : 'top', 'item')
+      onSubmit(
+        {
+          ...capture,
+          title,
+          // exactOptionalPropertyTypes: "no project" is an ABSENT key, not
+          // `projectId: undefined`.
+          ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
+        },
+        e.altKey ? 'backlog' : 'top',
+        'item',
+      )
     }
   }
 
@@ -244,7 +315,7 @@ export function QuickCapture({
         const name = normalizeTitle(value)
         return name === '' ? '' : `new project · ${name}`
       })()
-    : resolvedLine(capture, projects)
+    : resolvedLine(capture, selectedProject)
 
   return (
     <div
@@ -271,25 +342,42 @@ export function QuickCapture({
               if (underlayRef.current) underlayRef.current.scrollTop = e.currentTarget.scrollTop
             }}
             onKeyDown={handleKeyDown}
-            placeholder="order tile samples thu weymouth"
+            placeholder="order tile samples thu"
             spellCheck={false}
             autoComplete="off"
             rows={1}
             aria-label="Quick capture item"
           />
         </div>
-        {importMode ? null : (
-          <label className="ws-capture-project-toggle">
-            <input
-              type="checkbox"
-              checked={projectMode}
-              onChange={(e) => setProjectMode(e.target.checked)}
+        {/*
+          * The picker comes FIRST and the mode switch last, behind a rule. Sat
+          * side by side and identically styled, "New project" read as a fourth
+          * project you could file this item under — the opposite of what it
+          * does. Order and a separator carry that distinction without adding a
+          * label to a row that has to stay one line.
+          */}
+        <div className="ws-capture-controls">
+          {/* Naming the project being CREATED, so there is nothing to file it under. */}
+          {projectMode ? null : (
+            <ProjectPicker
+              projects={projects}
+              selected={effectiveProjectId}
+              onSelect={setProjectId}
             />
-            Project
-          </label>
-        )}
+          )}
+          {importMode ? null : (
+            <label className="ws-capture-project-toggle">
+              <input
+                type="checkbox"
+                checked={projectMode}
+                onChange={(e) => setProjectMode(e.target.checked)}
+              />
+              New project
+            </label>
+          )}
+        </div>
         {importMode && bulkParse ? (
-          <BulkPreview parse={bulkParse} projects={projects} />
+          <BulkPreview parse={bulkParse} />
         ) : (
           <div className="ws-capture-resolved">{resolved || ' '}</div>
         )}
@@ -299,7 +387,7 @@ export function QuickCapture({
               type="button"
               className="ws-capture-bulk-btn ws-capture-bulk-btn--ghost"
               disabled={bulkParse.createCount === 0}
-              onClick={() => onSubmitBulk?.(bulkParse, 'backlog')}
+              onClick={() => onSubmitBulk?.(bulkParse, 'backlog', effectiveProjectId)}
             >
               Add to backlog
             </button>
@@ -307,7 +395,7 @@ export function QuickCapture({
               type="button"
               className="ws-capture-bulk-btn ws-capture-bulk-btn--primary"
               disabled={bulkParse.createCount === 0}
-              onClick={() => onSubmitBulk?.(bulkParse, 'top')}
+              onClick={() => onSubmitBulk?.(bulkParse, 'top', effectiveProjectId)}
             >
               Create {bulkParse.createCount} item{bulkParse.createCount === 1 ? '' : 's'}
             </button>
@@ -353,7 +441,7 @@ export function QuickCapture({
                 <kbd>⌥⏎</kbd> add to backlog
               </span>
               <span>
-                <kbd>⌘⏎</kbd> create project
+                <kbd>⌘⏎</kbd> new project
               </span>
               <span>
                 <kbd>esc</kbd> close
@@ -373,8 +461,12 @@ export function QuickCapture({
  * viewport). Skipped lines and possible-duplicate/extra-column warnings get
  * a visibly distinct treatment so a scan of the list tells you what's about
  * to happen before you commit to it.
+ *
+ * No per-line project is shown: the batch's project is one choice made in the
+ * picker above, identical on every line, so repeating it N times would be
+ * noise rather than information.
  */
-function BulkPreview({ parse, projects }: { parse: BulkParse; projects: readonly Project[] }): JSX.Element {
+function BulkPreview({ parse }: { parse: BulkParse }): JSX.Element {
   const skippedCount = parse.lines.length - parse.createCount
   return (
     <div className="ws-capture-bulk">
@@ -386,7 +478,6 @@ function BulkPreview({ parse, projects }: { parse: BulkParse; projects: readonly
       </div>
       <div className="ws-capture-bulk-list" role="list">
         {parse.lines.map((line, i) => {
-          const project = line.projectId ? projects.find((p) => p.id === line.projectId) : undefined
           return (
             <div
               key={i}
@@ -405,9 +496,6 @@ function BulkPreview({ parse, projects }: { parse: BulkParse; projects: readonly
               </span>
               {!line.skipped && line.due ? (
                 <span className="ws-capture-bulk-meta ws-capture-bulk-meta--due">{formatDue(line.due)}</span>
-              ) : null}
-              {!line.skipped && project ? (
-                <span className="ws-capture-bulk-meta ws-capture-bulk-meta--project">{project.name}</span>
               ) : null}
               {line.reason ? <span className="ws-capture-bulk-reason">{line.reason}</span> : null}
             </div>

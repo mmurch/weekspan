@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { minimalMoveRank, weekOf, type Weekspan } from '@weekspan/weekspan-core'
+import { weekOf, type Weekspan } from '@weekspan/weekspan-core'
 import { Grid } from './grid/Grid.js'
 import { buildGrid } from './grid/viewModel.js'
 import { demoWeekspan, emptyWeekspan, stressWeekspan, wrappingWeekspan } from './grid/fixtures.js'
@@ -26,7 +26,16 @@ import { resolveKey, applyAction } from './interaction/keymap.js'
 import { isTypingTarget } from './interaction/isTypingTarget.js'
 import { reconcileSelection, selectionFromCell, type Selection } from './interaction/selection.js'
 import { CellMenu } from './interaction/CellMenu.js'
-import { priorityAdapter, projectAdapter, useDragPreview } from './interaction/useDragPreview.js'
+import {
+  priorityAdapter,
+  projectAdapter,
+  useDragPreview,
+  type MarkDrop,
+} from './interaction/useDragPreview.js'
+import { moveMark } from './interaction/markDrag.js'
+import { reorderItem } from './interaction/reorder.js'
+import { commitNeighbours } from './interaction/dragPreview.js'
+import type { RowVM } from './grid/viewModel.js'
 import { QuickCapture } from './add/QuickCapture.js'
 import { insertItem } from './add/draft.js'
 import { commitEdit, type EditTarget } from './add/commitEdit.js'
@@ -345,23 +354,10 @@ function Workspace({
     if (vm) setSelection((cur) => reconcileSelection(cur, vm))
   }, [vm])
 
-  /**
-   * Commits a drag. All rank maths stays in weekspan-core: the drag only ever
-   * names neighbour ids, and `minimalMoveRank` decides whether that even
-   * requires a write. A drop that already satisfies its constraint writes
-   * nothing, so a dragged-and-returned row leaves no diff in a synced folder.
-   */
+  /** Commits a grip drag. The rank rule itself lives in `reorderItem`. */
   const handleReorder = useCallback(
     (itemId: string, beforeId: string | null, afterId: string | null): void => {
-      void mutate((w) => {
-        const moving = w.items.find((i) => i.id === itemId)
-        if (!moving) return null
-        const before = beforeId ? (w.items.find((i) => i.id === beforeId) ?? null) : null
-        const after = afterId ? (w.items.find((i) => i.id === afterId) ?? null) : null
-        const rank = minimalMoveRank(moving, before, after, w.items)
-        if (rank === null) return null
-        return { ...w, items: w.items.map((i) => (i.id === moving.id ? { ...i, rank } : i)) }
-      })
+      void mutate((w) => reorderItem(w, itemId, beforeId, afterId))
     },
     [mutate],
   )
@@ -384,18 +380,59 @@ function Workspace({
     [mutate],
   )
 
+  /**
+   * Dropping a dragged MARK chip. Both axes land in ONE `mutate`, so a chip
+   * dragged down and across is a single file write and a single undo step —
+   * two calls would let a reader see a half-applied gesture, and would make
+   * Cmd+Z undo half of it.
+   *
+   * The mark move goes first and the reorder is applied ON TOP of its result,
+   * never against the original: `reorderItem` looks the item up by id, and
+   * feeding it a stale weekspan would drop the mark move on the floor. Either
+   * half returning null (`minimalMoveRank` already satisfied, a refused
+   * vacation-day landing) just means that half writes nothing.
+   */
+  const handleMarkDrop = useCallback(
+    (drop: MarkDrop<RowVM>): void => {
+      void mutate((w) => {
+        const moved = moveMark(w, drop.itemId, drop.from, drop.to)
+        if (!drop.reorder) return moved
+        const n = commitNeighbours(drop.previewed, drop.itemId)
+        if (!n) return moved
+        return reorderItem(moved ?? w, drop.itemId, n.beforeId, n.afterId) ?? moved
+      })
+    },
+    [mutate],
+  )
+
+  /** The same drop in Project view, where the row order also carries a group. */
+  const handleProjectMarkDrop = useCallback(
+    (drop: MarkDrop<ProjectRow>): void => {
+      void mutate((w) => {
+        const moved = moveMark(w, drop.itemId, drop.from, drop.to)
+        if (!drop.reorder) return moved
+        const target = dropFromRows(drop.previewed, drop.itemId)
+        if (!target) return moved
+        return applyProjectDrop(moved ?? w, target) ?? moved
+      })
+    },
+    [mutate],
+  )
+
   // Both hooks run every render (rules of hooks); only the active view's adapter
   // is ever handed a pointerdown, and the inactive one is null so it does no work.
   const priorityDrag = useDragPreview(
     useMemo(() => priorityAdapter(vm, handleReorder), [vm, handleReorder]),
+    handleMarkDrop,
   )
   const projectDrag = useDragPreview(
     useMemo(
       () => projectAdapter(projectVm?.rows ?? null, handleProjectReorder),
       [projectVm, handleProjectReorder],
     ),
+    handleProjectMarkDrop,
   )
-  const { state: dragState, gripHandlers } =
+  const { state: dragState, gripHandlers, markHandlers } =
     view === 'project' ? projectDrag : priorityDrag
 
   useEffect(() => {
@@ -577,6 +614,8 @@ function Workspace({
               })
             }}
             gripHandlers={gripHandlers}
+            markHandlers={markHandlers}
+            markDrag={dragState.markDrag}
             previewRows={
               view === 'project'
                 ? null
@@ -687,8 +726,8 @@ function Workspace({
           projects={weekspan.projects}
           today={today}
           onClose={() => setCaptureOpen(false)}
-          onSubmitBulk={(parse, position) => {
-            void mutate((w) => commitBulk(w, parse, position, today))
+          onSubmitBulk={(parse, position, projectId) => {
+            void mutate((w) => commitBulk(w, parse, position, today, projectId ?? undefined))
             setCaptureOpen(false)
             say(`Imported ${parse.createCount} item(s).`)
           }}

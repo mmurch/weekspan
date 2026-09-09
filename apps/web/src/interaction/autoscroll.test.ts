@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { AUTOSCROLL_MAX_PX, AUTOSCROLL_ZONE_PX, autoScrollDelta } from './autoscroll.js'
+import {
+  AUTOSCROLL_MAX_PX,
+  AUTOSCROLL_ZONE_PX,
+  autoScrollDelta,
+  autoScrollDeltaX,
+} from './autoscroll.js'
 
 /** A roomy container: 800px tall, so neither zone is clamped by height. */
 const rect = { top: 100, bottom: 900 }
@@ -83,5 +88,45 @@ describe('autoScrollDelta — short containers', () => {
   it('degrades to zero for a collapsed container instead of dividing by zero', () => {
     expect(autoScrollDelta({ top: 50, bottom: 50 }, 50)).toBe(0)
     expect(Number.isFinite(autoScrollDelta({ top: 0, bottom: 0 }, 10))).toBe(true)
+  })
+})
+
+describe('autoScrollDeltaX', () => {
+  // 400px-wide box from x=100 to x=500, so both 40px zones fit with room spare.
+  const xRect = { left: 100, right: 500 }
+
+  it('does not scroll while the pointer is clear of both zones', () => {
+    expect(autoScrollDeltaX(xRect, 300)).toBe(0)
+    expect(autoScrollDeltaX(xRect, 141)).toBe(0)
+    expect(autoScrollDeltaX(xRect, 459)).toBe(0)
+  })
+
+  it('scrolls left (negative) inside the left zone, right (positive) inside the right', () => {
+    expect(autoScrollDeltaX(xRect, 120)).toBeLessThan(0)
+    expect(autoScrollDeltaX(xRect, 480)).toBeGreaterThan(0)
+  })
+
+  it('ramps from nothing at the zone boundary to full speed at the edge', () => {
+    const atBoundary = Math.abs(autoScrollDeltaX(xRect, 140))
+    const halfway = Math.abs(autoScrollDeltaX(xRect, 120))
+    const atEdge = Math.abs(autoScrollDeltaX(xRect, 100))
+    expect(atBoundary).toBeCloseTo(0)
+    expect(halfway).toBeGreaterThan(atBoundary)
+    expect(atEdge).toBeGreaterThan(halfway)
+    expect(atEdge).toBe(AUTOSCROLL_MAX_PX)
+  })
+
+  it('holds at full speed past the edge rather than accelerating without bound', () => {
+    expect(autoScrollDeltaX(xRect, -900)).toBe(-AUTOSCROLL_MAX_PX)
+    expect(autoScrollDeltaX(xRect, 9000)).toBe(AUTOSCROLL_MAX_PX)
+  })
+
+  it('keeps the two zones disjoint in a box narrower than two of them', () => {
+    // 50px wide: zones halve to 25 each and meet in the middle, so no pointer
+    // position can satisfy both and pick a direction at random.
+    const narrow = { left: 0, right: 50 }
+    expect(autoScrollDeltaX(narrow, 24)).toBeLessThan(0)
+    expect(autoScrollDeltaX(narrow, 26)).toBeGreaterThan(0)
+    expect(autoScrollDeltaX(narrow, 25)).toBe(0)
   })
 })

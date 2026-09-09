@@ -100,16 +100,55 @@
   color: var(--ws-due-fg);
 }
 
-.ws-capture-mark--project {
-  background: var(--ws-sel-bg);
-  color: var(--ws-sel-ring);
+/*
+ * The controls row: the opt-in project checkboxes, then the "New project" mode
+ * switch pushed to the far end behind a rule. They are two different kinds of
+ * thing — one files this item, the other changes what ⏎ creates — and adjacent
+ * identical checkboxes read as one set, so the separation is doing real work.
+ * `flex-wrap` lives on the picker rather than the row, so a long project list
+ * wraps within itself and leaves the switch where it was.
+ */
+.ws-capture-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.ws-capture-projects {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.ws-capture-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 11px/1.4 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-3);
+  user-select: none;
+  cursor: pointer;
+}
+
+.ws-capture-project input {
+  accent-color: var(--ws-sel-ring);
+}
+
+.ws-capture-project:has(input:checked) {
+  color: var(--ws-ink-1);
 }
 
 .ws-capture-project-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 8px;
+  /* Pinned to the far end even when the picker is empty or absent. */
+  margin-left: auto;
+  padding-left: 14px;
+  border-left: 1px solid var(--ws-hair);
   font: 500 11px/1.4 'IBM Plex Mono', monospace;
   color: var(--ws-ink-3);
   user-select: none;
@@ -218,11 +257,6 @@
 .ws-capture-bulk-meta--due {
   background: var(--ws-due-bg);
   color: var(--ws-due-fg);
-}
-
-.ws-capture-bulk-meta--project {
-  background: var(--ws-sel-bg);
-  color: var(--ws-sel-ring);
 }
 
 .ws-capture-bulk-reason {
