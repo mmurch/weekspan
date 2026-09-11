@@ -1,4 +1,4 @@
-import { removeItem, type Weekspan } from '@weekspan/weekspan-core'
+import { removeItem, type Link, type Weekspan } from '@weekspan/weekspan-core'
 import { insertItem, updateTitle } from './draft.js'
 
 /**
@@ -21,6 +21,8 @@ export type EditTarget =
        * bucket) and is distinct from absent.
        */
       projectId?: string | null
+      /** URLs pasted into the draft, created with it as chips. See `InsertOpts.links`. */
+      links?: readonly Link[]
     }
 
 /**
@@ -52,12 +54,15 @@ export function commitEdit(
     return updateTitle(weekspan, target.itemId, trimmed)
   }
 
-  // An abandoned draft leaves nothing behind.
-  if (trimmed === '') return null
+  // A draft that is only a pasted link is named after the link. One with
+  // neither text nor links is abandoned and leaves nothing behind.
+  const name = trimmed || (target.links?.[0]?.title.trim() ?? '')
+  if (name === '') return null
 
   try {
     return insertItem(weekspan, {
-      title: trimmed,
+      title: name,
+      ...(target.links?.length ? { links: target.links } : {}),
       ...(target.afterId ? { afterId: target.afterId } : {}),
       ...(target.beforeId ? { beforeId: target.beforeId } : {}),
       ...(target.parentId ? { parentId: target.parentId } : {}),

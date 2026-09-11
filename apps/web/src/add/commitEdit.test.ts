@@ -1,4 +1,4 @@
-import { orderItems } from '@weekspan/weekspan-core'
+import { createWeekspan, orderItems } from '@weekspan/weekspan-core'
 import { buildGrid } from '../grid/viewModel.js'
 import { demoWeekspan } from '../grid/fixtures.js'
 import { commitEdit } from './commitEdit.js'
@@ -120,5 +120,26 @@ describe('creating a new item in a gap', () => {
     expect(() =>
       commitEdit(base, { kind: 'new', afterId: child.id, beforeId: null, parentId: null }, 'x'),
     ).not.toThrow()
+  })
+})
+
+describe('commitEdit — a draft with pasted links', () => {
+  const DOC = 'https://docs.google.com/document/d/abc/edit'
+  const target = (links: { url: string; title: string }[]) =>
+    ({ kind: 'new', afterId: null, beforeId: null, parentId: null, links }) as const
+
+  it('creates the item with its chips', () => {
+    const next = commitEdit(createWeekspan(), target([{ url: DOC, title: 'Tile spec' }]), 'order tiles')!
+    expect(next.items[0]!.title).toBe('order tiles')
+    expect(next.items[0]!.links).toEqual([{ url: DOC, title: 'Tile spec' }])
+  })
+
+  it('names a link-only draft after the link rather than abandoning it', () => {
+    const next = commitEdit(createWeekspan(), target([{ url: DOC, title: 'Tile spec' }]), '   ')!
+    expect(next.items[0]!.title).toBe('Tile spec')
+  })
+
+  it('still abandons a draft with neither text nor links', () => {
+    expect(commitEdit(createWeekspan(), target([]), '   ')).toBeNull()
   })
 })

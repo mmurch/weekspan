@@ -9,7 +9,7 @@
  * knowing anything about the store's no-op-means-no-write contract.
  */
 
-import type { IsoDate, Item, Weekspan } from '@weekspan/weekspan-core'
+import type { IsoDate, Item, Link, Weekspan } from '@weekspan/weekspan-core'
 import { rankForInsert, siblingsOf } from '@weekspan/weekspan-core'
 
 export interface InsertOpts {
@@ -30,6 +30,13 @@ export interface InsertOpts {
    * preview and then created the item with none.
    */
   projectId?: string | null
+  /**
+   * Link chips to create the item WITH, from a URL pasted while typing it.
+   * Part of the insert rather than a follow-up `addLink` so creating an item
+   * and its chips is one write and therefore one undo step. Deduplicated by
+   * url, the identity `mergeLinks` keys on.
+   */
+  links?: readonly Link[]
 }
 
 export interface InsertResult {
@@ -113,6 +120,18 @@ export function insertItem(weekspan: Weekspan, opts: InsertOpts): InsertResult {
   // Validated by the caller or by `parse` on load; a dangling projectId is
   // rejected by the strict parser, so it must reference a real project.
   if (opts.projectId != null) item.projectId = opts.projectId
+  if (opts.links && opts.links.length > 0) {
+    const seen = new Set<string>()
+    const links: Link[] = []
+    for (const l of opts.links) {
+      const url = l.url.trim()
+      if (url === '' || seen.has(url)) continue
+      seen.add(url)
+      links.push({ url, title: l.title.trim() || url, ...(l.kind !== undefined ? { kind: l.kind } : {}) })
+    }
+    // An absent key, not an empty array, is what "no links" has always been.
+    if (links.length > 0) item.links = links
+  }
 
   return {
     weekspan: { ...weekspan, items: [...weekspan.items, item] },

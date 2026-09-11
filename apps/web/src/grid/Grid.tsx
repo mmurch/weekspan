@@ -1,7 +1,7 @@
 import type { CellVM, DayColumn, GridVM, RowVM, WeekBlock } from './viewModel.js'
 import { Fragment } from 'react'
 import type React from 'react'
-import type { IsoDate } from '@weekspan/weekspan-core'
+import type { IsoDate, Link } from '@weekspan/weekspan-core'
 import { intentForMouse, type MouseIntent } from '../interaction/mouse.js'
 import { isItemSelected } from '../interaction/selection.js'
 import { InlineEdit } from '../add/InlineEdit.js'
@@ -68,6 +68,14 @@ export interface GridInteraction {
    * seam opened a draft that then rendered nowhere.
    */
   draftSlot?: string | null
+  /** Links pasted into the open draft, shown under it until it commits. */
+  draftLinks?: readonly Link[]
+  /**
+   * A paste inside the draft row. Returns true when it was lifted into a
+   * pending chip. The draft is not an item yet, so unlike `onPasteLink` there
+   * is no id to attach to — the caller holds the link until the draft commits.
+   */
+  onPasteIntoDraft?: (data: DataTransfer) => boolean
   /** Delete a project group. Never offered for the unassigned bucket. */
   onDeleteProject?: (projectId: string) => void
   /** Project whose name is currently being edited in its group header. */
@@ -658,7 +666,21 @@ function DraftRow({
           initial=""
           onCommit={(t) => interaction.onCommitEdit?.(t)}
           onCancel={() => interaction.onCancelEdit?.()}
+          {...(interaction.onPasteIntoDraft ? { onPasteUrl: interaction.onPasteIntoDraft } : {})}
         />
+        {/*
+          * Read-only: no rename, no ×. Clicking anything here blurs the
+          * editor, and a blur COMMITS the draft — a remove button would create
+          * the item instead of dropping the link. Esc abandons the whole draft;
+          * a chip can be renamed or removed once the item exists.
+          */}
+        {interaction.draftLinks && interaction.draftLinks.length > 0 ? (
+          <span className="ws-links">
+            {interaction.draftLinks.map((l) => (
+              <LinkChip key={l.url} link={l} editing={false} />
+            ))}
+          </span>
+        ) : null}
       </div>
     </div>
   )

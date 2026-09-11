@@ -11,7 +11,12 @@
  *     typed into the title — the gesture people actually reach for;
  *   - the title coming from the clipboard's html flavour when there is one,
  *     and falling back to the kind label when there is not;
- *   - rename and remove.
+ *   - rename and remove;
+ *   - pasting a link while CREATING a todo, via quick capture and via the
+ *     inline draft row — driven with a REAL Cmd+V against the browser's own
+ *     clipboard. The first version of this probe only dispatched synthetic
+ *     paste events at existing rows, passed, and shipped a feature that did
+ *     nothing on the gesture people actually use.
  *
  * Exits non-zero on the first failed assertion, so `npm run verify` fails loudly.
  */
@@ -115,6 +120,57 @@ check('× removes the chip', (await chips(rows[1])).length === 0, JSON.stringify
 console.log('Undo covers it like any other write')
 await p.keyboard.press('Control+z'); await p.waitForTimeout(400)
 check('undo brings the removed chip back', (await chips(rows[1])).length === 1)
+
+/** Put text on the browser's real clipboard: select it in a scratch field, real Cmd+C. */
+async function copyReal(text) {
+  await p.evaluate((t) => {
+    const ta = document.createElement('textarea'); ta.id = '__cb'; ta.value = t
+    document.body.appendChild(ta); ta.focus(); ta.select()
+  }, text)
+  await p.keyboard.press('Meta+C')
+  await p.evaluate(() => { document.getElementById('__cb').remove(); document.activeElement?.blur?.() })
+}
+const rowIdByTitle = (t) => p.evaluate((t) => {
+  for (const r of document.querySelectorAll('[data-row-id]'))
+    if (r.querySelector('.ws-title-text')?.textContent?.trim() === t) return r.dataset.rowId
+  return null
+}, t)
+
+console.log('Real Cmd+V while creating a todo — quick capture')
+const CAP = 'https://docs.google.com/document/d/capture999/edit'
+await p.keyboard.press('Escape')
+await copyReal(CAP)
+await p.keyboard.press('Meta+K'); await p.waitForTimeout(250)
+await p.keyboard.type('order tile samples ')
+await p.keyboard.press('Meta+V'); await p.waitForTimeout(200)
+const capText = await p.evaluate(() => document.querySelector('.ws-capture-input')?.value ?? '')
+check('the URL is kept out of the capture text', !capText.includes('http'), JSON.stringify(capText))
+check('and shown as a pending chip in the overlay',
+  (await p.evaluate(() => document.querySelectorAll('.ws-capture-links .ws-link').length)) === 1)
+await p.keyboard.press('Enter'); await p.waitForTimeout(450)
+const capId = await rowIdByTitle('order tile samples')
+check('the todo was created with a clean title', capId !== null)
+const capChips = capId ? await chips(capId) : []
+check('carrying the pasted doc as a chip', capChips.length === 1 && capChips[0].kind === 'gdoc',
+  JSON.stringify(capChips))
+
+console.log('Real Cmd+V while creating a todo — inline draft row')
+const DRAFT = 'https://docs.google.com/spreadsheets/d/draft777/edit'
+await copyReal(DRAFT)
+await p.evaluate(() => document.querySelectorAll('.ws-seam')[1].click())
+await p.waitForTimeout(250)
+check('a draft row opened', (await p.evaluate(() => document.querySelectorAll('.ws-row--draft').length)) === 1)
+await p.keyboard.type('call supplier ')
+await p.keyboard.press('Meta+V'); await p.waitForTimeout(200)
+const draftText = await p.evaluate(() => document.querySelector('.ws-row--draft .ws-inline-edit')?.value ?? '')
+check('the URL is kept out of the draft text', !draftText.includes('http'), JSON.stringify(draftText))
+check('and shown as a pending chip under the draft',
+  (await p.evaluate(() => document.querySelectorAll('.ws-row--draft .ws-link').length)) === 1)
+await p.keyboard.press('Enter'); await p.waitForTimeout(450)
+const draftId = await rowIdByTitle('call supplier')
+const draftChips = draftId ? await chips(draftId) : []
+check('the todo was created carrying the chip', draftChips.length === 1 && draftChips[0].kind === 'gsheet',
+  JSON.stringify(draftChips))
 
 check('no console errors', errs.length === 0, errs.join(' | '))
 await b.close()

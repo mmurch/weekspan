@@ -59,18 +59,23 @@ export function LinkChip({
         />
       ) : (
         <>
-          <span className="ws-link-title" title="Click to rename" onClick={onStartRename}>
+          <span
+            className="ws-link-title"
+            {...(onStartRename ? { title: 'Click to rename', onClick: onStartRename } : {})}
+          >
             {link.title}
           </span>
-          <button
-            type="button"
-            className="ws-link-remove"
-            title="Remove link"
-            aria-label={`Remove ${link.title}`}
-            onClick={onRemove}
-          >
-            ×
-          </button>
+          {onRemove ? (
+            <button
+              type="button"
+              className="ws-link-remove"
+              title="Remove link"
+              aria-label={`Remove ${link.title}`}
+              onClick={onRemove}
+            >
+              ×
+            </button>
+          ) : null}
         </>
       )}
     </span>

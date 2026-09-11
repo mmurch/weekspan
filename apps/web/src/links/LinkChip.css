@@ -53,7 +53,7 @@
 .ws-link--gdrive .ws-link-icon { background: #5f6368; }
 
 .ws-link-title {
-  cursor: text;
+  cursor: default;
   /* A doc title runs long; the chip must not push the grid sideways. */
   max-width: 22ch;
   overflow: hidden;
@@ -61,7 +61,8 @@
   white-space: nowrap;
 }
 
-.ws-link-title:hover { color: var(--ws-ink); }
+.ws-link-title[title] { cursor: text; }
+.ws-link-title[title]:hover { color: var(--ws-ink); }
 
 /*
  * Hidden at rest rather than always shown: it sits four pixels from the rename

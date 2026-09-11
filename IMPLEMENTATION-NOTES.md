@@ -1226,3 +1226,31 @@ quietly write garbage into the file.
 The kind colours in `LinkChip.css` are literal hex rather than theme tokens — the one deliberate
 exception to this app's token discipline. Docs blue / Sheets green / Slides yellow is *semantic*;
 re-tinting per theme would make each theme's chips mean something different.
+
+### Pasting a link while CREATING a todo did nothing — and the probe said it worked
+
+Reported as: "the link chips are not working at all, nothing happens at all when i paste a link in
+with a todo item."
+
+Two separate causes, and it matters that they were separated rather than the first one being
+taken as the whole answer:
+
+1. **The installed app predated the feature.** `~/weekspan` was still build `2026-08-27 4cbe4ff`
+   with zero link-chip code, because `npm run build:single` updates `apps/web/dist-single/` only —
+   neither `dist-release/` (that is `npm run release`) nor `~/weekspan` (that is `./install.sh`).
+2. **The new build had a real gap.** Paste was only wired onto items that already EXIST — a
+   selected row, or an open title editor. Both ways of *creating* a todo ignored it: quick capture
+   (⌘K, `n` and Space all open it — it is the main creation path) and the inline draft row. In
+   quick capture the URL simply became part of the new item's title.
+
+Why it shipped: `probe-links.mjs` dispatched **synthetic** `ClipboardEvent`s at **existing** rows.
+It tested the paths that were built and never the gesture people reach for. It now drives both
+creation paths with a real ⌘V against the browser's own clipboard (select text in a scratch field,
+real ⌘C). A reproduction with real keystrokes was also what separated the two causes above — it
+showed existing-row paste working on the new build while creation paste did not.
+
+Pasted links are held as pending chips and created WITH the item — `InsertOpts.links` — so the
+item and its chips are one write and one undo step, and Esc drops both together. A capture or
+draft that is only a pasted link is named after the link rather than refused. The draft row's
+pending chips are deliberately read-only: clicking anything there blurs the editor, and a blur
+commits the draft, so a × would create the item instead of dropping the link.

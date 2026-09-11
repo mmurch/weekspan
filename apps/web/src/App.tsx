@@ -662,6 +662,19 @@ function Workspace({
             draggingId={dragState.draggingId}
             editingId={editing?.kind === 'existing' ? editing.itemId : null}
             draftSlot={editing?.kind === 'new' ? draftSlotKey(editing) : null}
+            draftLinks={editing?.kind === 'new' ? (editing.links ?? []) : []}
+            onPasteIntoDraft={(data) => {
+              const link = linkFromClipboard(data)
+              if (!link || editing?.kind !== 'new') return false
+              // Held on the draft target itself, so commitEdit creates the item
+              // and its chips in one write — and Esc drops both together.
+              setEditing((cur) =>
+                cur?.kind === 'new' && !(cur.links ?? []).some((l) => l.url === link.url)
+                  ? { ...cur, links: [...(cur.links ?? []), link] }
+                  : cur,
+              )
+              return true
+            }}
             projectRows={
               view === 'project'
                 ? // Mid-drag, render the prospective order — the same array the
@@ -802,6 +815,7 @@ function Workspace({
                   ...captureAnchor(w, today, position),
                   ...(capture.due ? { due: capture.due } : {}),
                   ...(capture.projectId ? { projectId: capture.projectId } : {}),
+                  ...(capture.links?.length ? { links: capture.links } : {}),
                 }).weekspan
               } catch (err) {
                 // insertItem throws on an empty title or a bad anchor. Refusing to

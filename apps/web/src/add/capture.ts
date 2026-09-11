@@ -18,7 +18,7 @@
  * highlight, and has no equivalent "I meant that literally" failure.
  */
 
-import type { IsoDate } from '@weekspan/weekspan-core'
+import type { IsoDate, Link } from '@weekspan/weekspan-core'
 import { tryParseDateWord } from '@weekspan/weekspan-core'
 
 export interface Token {
@@ -38,6 +38,13 @@ export interface Capture {
    * default for every new item.
    */
   projectId?: string
+  /**
+   * Links pasted into the overlay, lifted out of the text as chips. Like
+   * `projectId`, never produced by `parseCapture` — a URL typed or pasted as
+   * part of a sentence stays text. Only a paste that is ONE bare URL becomes a
+   * link (see `urlFromPaste`), and `QuickCapture` collects those itself.
+   */
+  links?: Link[]
   tokens: Token[]
 }
 
