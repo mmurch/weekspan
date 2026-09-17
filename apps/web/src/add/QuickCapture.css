@@ -308,8 +308,3 @@
 .ws-capture-bulk-btn--primary:hover:not(:disabled) {
   opacity: 0.9;
 }
-
-/* Links pasted into the box, waiting to be created with the item. */
-.ws-capture-links {
-  margin-top: 8px;
-}
