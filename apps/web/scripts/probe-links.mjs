@@ -1,24 +1,20 @@
 /**
- * Link-chip probe.
+ * Inline link probe.
  *
- * `links.test.ts` (core) and `clipboard.test.ts` cover the URL classifier, the
- * clipboard parser and the three mutations. What only exists as wiring, and so
- * only fails in a real browser, is:
+ * A link lives in the item's own text, at the spot it was pasted, and renders
+ * there as an icon (`parseTitleLinks` + `InlineLinks`). The parser and the
+ * clipboard helpers are unit-tested; what only exists as wiring is:
  *
- *   - a paste onto a SELECTED ROW becoming a chip, and a paste of ordinary
- *     text still pasting as text;
- *   - a paste INSIDE the title editor being lifted out into a chip rather than
- *     typed into the title — the gesture people actually reach for;
- *   - the title coming from the clipboard's html flavour when there is one,
- *     and falling back to the kind label when there is not;
- *   - rename and remove;
- *   - pasting a link while CREATING a todo, via quick capture and via the
- *     inline draft row — driven with a REAL Cmd+V against the browser's own
- *     clipboard. The first version of this probe only dispatched synthetic
- *     paste events at existing rows, passed, and shipped a feature that did
- *     nothing on the gesture people actually use.
+ *   - a real Cmd+V putting the URL into the text at the right place, in every
+ *     surface that takes text: quick capture, the title editor, the draft row,
+ *     and a selected row with no editor open;
+ *   - the icon rendering IN POSITION rather than at the end of the line;
+ *   - an unnamed link showing NO stand-in label — just the icon;
+ *   - a name surviving when the clipboard carried one.
  *
- * Exits non-zero on the first failed assertion, so `npm run verify` fails loudly.
+ * Driven with a real Cmd+V against the browser's own clipboard. An earlier
+ * version of this probe dispatched synthetic paste events and passed while the
+ * gesture people actually use did nothing.
  */
 import { chromium } from 'playwright'
 import path from 'node:path'
@@ -32,147 +28,123 @@ function check(label, ok, detail = '') {
 
 const b = await chromium.launch()
 const p = await b.newPage({ viewport: { width: 1300, height: 850 } })
+p.setDefaultTimeout(5000)
 p.on('pageerror', (e) => errs.push(String(e)))
 p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()) })
 await p.goto(`file://${path.resolve('dist-single/weekspan.html')}?today=2026-08-26&fixture=demo&theme=paper`)
 await p.waitForTimeout(1300)
 await p.evaluate(() => { document.documentElement.style.zoom = '' })
 
-const rows = await p.evaluate(() => [...document.querySelectorAll('[data-row-id]')].map((e) => e.dataset.rowId))
-const chips = (id) => p.evaluate((i) =>
-  [...document.querySelectorAll(`[data-row-id="${i}"] .ws-link`)].map((e) => ({
-    kind: (e.className.match(/ws-link--(\w+)/) || [])[1],
-    title: e.querySelector('.ws-link-title')?.textContent ?? '',
-    href: e.querySelector('.ws-link-icon')?.getAttribute('href') ?? '',
-  })), id)
-const titleOf = (id) => p.evaluate((i) =>
-  document.querySelector(`[data-row-id="${i}"] .ws-title-text`)?.textContent?.trim() ?? '', id)
-/** Select a row by clicking one of its day cells — clicking the title would open the editor. */
-const selectRow = async (id) => {
-  await p.evaluate((i) => {
-    document.querySelector(`[data-row-id="${i}"] [data-cell-date]`)
-      .dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }))
-  }, id)
-  await p.waitForTimeout(120)
-}
-const paste = async (target, plain, html) => {
-  await p.evaluate(([sel, plain, html]) => {
-    const dt = new DataTransfer()
-    dt.setData('text/plain', plain)
-    if (html) dt.setData('text/html', html)
-    const el = sel ? document.querySelector(sel) : document.body
-    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
-  }, [target, plain, html])
-  await p.waitForTimeout(320)
-}
-
 const DOC = 'https://docs.google.com/document/d/aaa111/edit'
 const SHEET = 'https://docs.google.com/spreadsheets/d/bbb222/edit'
 
-console.log('Paste onto a selected row')
-await selectRow(rows[0])
-await paste(null, DOC, `<a href="${DOC}">Weymouth tile spec v3</a>`)
-let c = await chips(rows[0])
-check('a chip appeared', c.length === 1, JSON.stringify(c))
-check('with the kind read from the URL', c[0]?.kind === 'gdoc', c[0]?.kind)
-check('and the title taken from the clipboard html flavour',
-  c[0]?.title === 'Weymouth tile spec v3', c[0]?.title)
-check('the icon links to the doc', c[0]?.href === DOC, c[0]?.href)
-
-console.log('No html flavour — the kind label stands in, never the raw URL')
-await selectRow(rows[1])
-await paste(null, SHEET, null)
-c = await chips(rows[1])
-check('chip is a sheet', c[0]?.kind === 'gsheet', JSON.stringify(c))
-check('titled with the placeholder', c[0]?.title === 'Google Sheet', c[0]?.title)
-
-console.log('Ordinary text still pastes as text')
-const before = await chips(rows[2])
-await selectRow(rows[2])
-await paste(null, 'see the doc for details', null)
-check('no chip from prose', (await chips(rows[2])).length === before.length)
-
-console.log('Paste inside the title editor lifts the URL out')
-const originalTitle = await titleOf(rows[3])
-await p.click(`[data-row-id="${rows[3]}"] .ws-title-text`)
-await p.waitForTimeout(200)
-await paste('.ws-inline-edit', DOC, `<a href="${DOC}">Shared spec</a>`)
-await p.keyboard.press('Enter')
-await p.waitForTimeout(350)
-check('the title is unchanged — no URL typed into it',
-  (await titleOf(rows[3])) === originalTitle, `${originalTitle} -> ${await titleOf(rows[3])}`)
-c = await chips(rows[3])
-check('and the link became a chip instead', c[0]?.title === 'Shared spec', JSON.stringify(c))
-
-console.log('Rename and remove')
-await p.click(`[data-row-id="${rows[1]}"] .ws-link-title`)
-await p.waitForTimeout(200)
-await p.fill('.ws-link-edit', 'Kitchen budget')
-await p.keyboard.press('Enter')
-await p.waitForTimeout(350)
-check('renaming the placeholder sticks',
-  (await chips(rows[1]))[0]?.title === 'Kitchen budget', JSON.stringify(await chips(rows[1])))
-
-await p.click(`[data-row-id="${rows[1]}"] .ws-link-remove`)
-await p.waitForTimeout(350)
-check('× removes the chip', (await chips(rows[1])).length === 0, JSON.stringify(await chips(rows[1])))
-
-console.log('Undo covers it like any other write')
-await p.keyboard.press('Control+z'); await p.waitForTimeout(400)
-check('undo brings the removed chip back', (await chips(rows[1])).length === 1)
-
-/** Put text on the browser's real clipboard: select it in a scratch field, real Cmd+C. */
-async function copyReal(text) {
-  await p.evaluate((t) => {
-    const ta = document.createElement('textarea'); ta.id = '__cb'; ta.value = t
+/** Put text (and optionally an html flavour) on the browser's real clipboard. */
+async function copyReal(plain, html) {
+  // Sets BOTH flavours by overriding the copy event: a real "copy link" puts
+  // the URL in text/plain and the anchor in text/html. Copying rendered anchor
+  // text instead puts the VISIBLE TEXT in text/plain, which is a different
+  // gesture entirely (and correctly pastes as text).
+  await p.evaluate(([t, h]) => {
+    const ta = document.createElement('textarea')
+    ta.id = '__cb'; ta.value = t
     document.body.appendChild(ta); ta.focus(); ta.select()
-  }, text)
+    const onCopy = (e) => {
+      e.clipboardData.setData('text/plain', t)
+      if (h) e.clipboardData.setData('text/html', h)
+      e.preventDefault()
+      document.removeEventListener('copy', onCopy, true)
+    }
+    document.addEventListener('copy', onCopy, true)
+  }, [plain, html])
   await p.keyboard.press('Meta+C')
   await p.evaluate(() => { document.getElementById('__cb').remove(); document.activeElement?.blur?.() })
 }
-const rowIdByTitle = (t) => p.evaluate((t) => {
-  for (const r of document.querySelectorAll('[data-row-id]'))
-    if (r.querySelector('.ws-title-text')?.textContent?.trim() === t) return r.dataset.rowId
-  return null
-}, t)
 
-console.log('Real Cmd+V while creating a todo — quick capture')
-const CAP = 'https://docs.google.com/document/d/capture999/edit'
-await p.keyboard.press('Escape')
-await copyReal(CAP)
+/** What the row's title renders as: text pieces and inline link icons, in order. */
+const renderedTitle = (id) => p.evaluate((i) => {
+  const el = document.querySelector(`[data-row-id="${i}"] .ws-title-text`)
+  if (!el) return null
+  return [...el.childNodes].map((n) => {
+    if (n.nodeType === Node.TEXT_NODE) return { t: 'text', v: n.textContent }
+    if (n.classList?.contains('ws-ilink')) {
+      return {
+        t: 'link',
+        kind: (n.className.match(/ws-ilink--(\w+)/) || [])[1],
+        href: n.getAttribute('href'),
+        name: n.querySelector('.ws-ilink-name')?.textContent ?? null,
+      }
+    }
+    return { t: 'other', v: n.textContent }
+  })
+}, id)
+const rowIdByText = (fragment) => p.evaluate((f) => {
+  for (const r of document.querySelectorAll('[data-row-id]'))
+    if ((r.querySelector('.ws-title-text')?.textContent ?? '').includes(f)) return r.dataset.rowId
+  return null
+}, fragment)
+const rows = await p.evaluate(() => [...document.querySelectorAll('[data-row-id]')].map((e) => e.dataset.rowId))
+
+console.log('Quick capture: the icon appears where the link was typed')
+await copyReal(DOC)
 await p.keyboard.press('Meta+K'); await p.waitForTimeout(250)
-await p.keyboard.type('order tile samples ')
+await p.keyboard.type('review ')
+await p.keyboard.press('Meta+V'); await p.waitForTimeout(150)
+await p.keyboard.type(' before the meeting')
+await p.keyboard.press('Enter'); await p.waitForTimeout(450)
+const capId = await rowIdByText('review')
+const cap = capId ? await renderedTitle(capId) : []
+check('the todo was created', capId !== null)
+check('text, then the icon, then more text — in position', cap.length === 3 &&
+  cap[0].t === 'text' && cap[1].t === 'link' && cap[2].t === 'text', JSON.stringify(cap))
+check('the icon knows it is a Doc', cap[1]?.kind === 'gdoc', JSON.stringify(cap[1]))
+check('and shows NO stand-in label', cap[1]?.name === null, JSON.stringify(cap[1]))
+check('the words around it survive', (cap[0]?.v ?? '').includes('review') && (cap[2]?.v ?? '').includes('before the meeting'),
+  JSON.stringify([cap[0], cap[2]]))
+
+console.log('A clipboard that carries a name keeps it')
+await copyReal(SHEET, `<a href="${SHEET}">Kitchen budget</a>`)
+await p.keyboard.press('Meta+K'); await p.waitForTimeout(250)
+await p.keyboard.type('check ')
 await p.keyboard.press('Meta+V'); await p.waitForTimeout(200)
 const capText = await p.evaluate(() => document.querySelector('.ws-capture-input')?.value ?? '')
-check('the URL is kept out of the capture text', !capText.includes('http'), JSON.stringify(capText))
-check('and shown as a pending chip in the overlay',
-  (await p.evaluate(() => document.querySelectorAll('.ws-capture-links .ws-link').length)) === 1)
+check('the box holds [name](url) markup', capText.includes('[Kitchen budget](') , JSON.stringify(capText))
 await p.keyboard.press('Enter'); await p.waitForTimeout(450)
-const capId = await rowIdByTitle('order tile samples')
-check('the todo was created with a clean title', capId !== null)
-const capChips = capId ? await chips(capId) : []
-check('carrying the pasted doc as a chip', capChips.length === 1 && capChips[0].kind === 'gdoc',
-  JSON.stringify(capChips))
+const namedId = await rowIdByText('check')
+const named = namedId ? await renderedTitle(namedId) : []
+const namedLink = named.find((s) => s.t === 'link')
+check('the name renders beside the icon', namedLink?.name === 'Kitchen budget', JSON.stringify(named))
+check('and it is a Sheet', namedLink?.kind === 'gsheet', JSON.stringify(namedLink))
 
-console.log('Real Cmd+V while creating a todo — inline draft row')
-const DRAFT = 'https://docs.google.com/spreadsheets/d/draft777/edit'
-await copyReal(DRAFT)
-await p.evaluate(() => document.querySelectorAll('.ws-seam')[1].click())
-await p.waitForTimeout(250)
-check('a draft row opened', (await p.evaluate(() => document.querySelectorAll('.ws-row--draft').length)) === 1)
-await p.keyboard.type('call supplier ')
-await p.keyboard.press('Meta+V'); await p.waitForTimeout(200)
-const draftText = await p.evaluate(() => document.querySelector('.ws-row--draft .ws-inline-edit')?.value ?? '')
-check('the URL is kept out of the draft text', !draftText.includes('http'), JSON.stringify(draftText))
-check('and shown as a pending chip under the draft',
-  (await p.evaluate(() => document.querySelectorAll('.ws-row--draft .ws-link').length)) === 1)
-await p.keyboard.press('Enter'); await p.waitForTimeout(450)
-const draftId = await rowIdByTitle('call supplier')
-const draftChips = draftId ? await chips(draftId) : []
-check('the todo was created carrying the chip', draftChips.length === 1 && draftChips[0].kind === 'gsheet',
-  JSON.stringify(draftChips))
+console.log('Paste into the title editor lands at the caret')
+await copyReal(DOC)
+await p.click(`[data-row-id="${rows[0]}"] .ws-title-text`); await p.waitForTimeout(200)
+await p.keyboard.press('End')
+await p.keyboard.type(' ')
+await p.keyboard.press('Meta+V'); await p.waitForTimeout(150)
+await p.keyboard.press('Enter'); await p.waitForTimeout(400)
+const edited = await renderedTitle(rows[0])
+check('the edited title now ends with an icon', edited?.at(-1)?.t === 'link', JSON.stringify(edited))
+
+console.log('Paste with a row selected, no editor open')
+await copyReal(SHEET)
+await p.click(`[data-row-id="${rows[1]}"] [data-cell-date="2026-08-26"]`); await p.waitForTimeout(150)
+await p.keyboard.press('Meta+V'); await p.waitForTimeout(400)
+const appended = await renderedTitle(rows[1])
+check('it is appended to that row as an icon', appended?.some((s) => s.t === 'link'), JSON.stringify(appended))
+
+console.log('Ordinary text still pastes as text')
+await copyReal('see the doc for details')
+await p.click(`[data-row-id="${rows[2]}"] [data-cell-date="2026-08-26"]`); await p.waitForTimeout(150)
+const before = await renderedTitle(rows[2])
+await p.keyboard.press('Meta+V'); await p.waitForTimeout(350)
+check('nothing changed', JSON.stringify(await renderedTitle(rows[2])) === JSON.stringify(before))
+
+console.log('Undo covers it like any other write')
+await p.keyboard.press('Control+z'); await p.waitForTimeout(400)
+check('undo removes the appended link', !(await renderedTitle(rows[1]))?.some((s) => s.t === 'link'),
+  JSON.stringify(await renderedTitle(rows[1])))
 
 check('no console errors', errs.length === 0, errs.join(' | '))
 await b.close()
-console.log(failures.length ? `\nFAILED: ${failures.join(', ')}` : '\nlinks probe: all checks passed')
+console.log(failures.length ? `\nFAILED: ${failures.join(', ')}` : '\ninline-links probe: all checks passed')
 process.exit(failures.length ? 1 : 0)

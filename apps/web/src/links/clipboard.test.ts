@@ -1,4 +1,4 @@
-import { titleFromClipboardHtml, urlFromPaste } from './clipboard.js'
+import { markdownForPaste, titleFromClipboardHtml, urlFromPaste } from './clipboard.js'
 
 const DOC = 'https://docs.google.com/document/d/1AbC_def-123/edit'
 
@@ -80,5 +80,39 @@ describe('titleFromClipboardHtml', () => {
     expect(titleFromClipboardHtml('', DOC)).toBeNull()
     expect(titleFromClipboardHtml('<p>no anchors here</p>', DOC)).toBeNull()
     expect(titleFromClipboardHtml(`<a href="${DOC}">   </a>`, DOC)).toBeNull()
+  })
+})
+
+describe('markdownForPaste', () => {
+  const DOC = 'https://docs.google.com/document/d/1AbC_def-123/edit'
+  const data = (plain: string, html?: string): DataTransfer =>
+    ({ getData: (t: string) => (t === 'text/html' ? (html ?? '') : plain) }) as DataTransfer
+
+  it('wraps the URL with the name the clipboard carried', () => {
+    expect(markdownForPaste(data(DOC, `<a href="${DOC}">Tile spec</a>`))).toBe(
+      `[Tile spec](${DOC})`,
+    )
+  })
+
+  it('returns null for a bare URL, so the ordinary paste happens', () => {
+    // The normal case — an address-bar or share-dialog copy. The URL lands in
+    // the text as-is and renders as an icon; a native paste also keeps the
+    // field's own undo stack, which a programmatic insert would break.
+    expect(markdownForPaste(data(DOC))).toBeNull()
+  })
+
+  it('returns null when the paste is not a bare URL at all', () => {
+    expect(markdownForPaste(data('see the doc for details'))).toBeNull()
+    expect(markdownForPaste(null)).toBeNull()
+  })
+
+  it('strips brackets and newlines that would break the link markup', () => {
+    expect(markdownForPaste(data(DOC, `<a href="${DOC}">Q3 [draft]\nv2</a>`))).toBe(
+      `[Q3 draft v2](${DOC})`,
+    )
+  })
+
+  it('returns null when the name is only brackets, rather than emitting an empty one', () => {
+    expect(markdownForPaste(data(DOC, `<a href="${DOC}">[]</a>`))).toBeNull()
   })
 })

@@ -1254,3 +1254,60 @@ item and its chips are one write and one undo step, and Esc drops both together.
 draft that is only a pasted link is named after the link rather than refused. The draft row's
 pending chips are deliberately read-only: clicking anything there blurs the editor, and a blur
 commits the draft, so a × would create the item instead of dropping the link.
+
+## Links moved INTO the item's text, and lost their stand-in label
+
+Asked for: "If a title is not successfully obtained, I don't want the 'Google Doc' or 'Google
+Slides' title at all. It should just be the clickable icon" and "I would like the icon to appear
+in-line in the message wherever the link was in the text."
+
+Both follow from the same fact, which the previous design had backwards. Titles are NOT the normal
+case. The user copies links from the browser address bar and from the Docs share dialog's "Copy
+link" button; both hand over a bare URL, and a Google URL contains no trace of the document's
+name. So "no name" is the resting state, and printing `Google Doc` beside every icon said nothing
+the icon had not already said — a row of three links read as three identical labels.
+
+### Where a link lives
+
+It is now part of the item's text, at the position it was pasted, in one of two forms:
+
+    review https://docs.google.com/document/d/1AbC/edit before lunch
+    review [Tile spec](https://docs.google.com/document/d/1AbC/edit) before lunch
+
+`parseTitleLinks` (weekspan-core) splits that into text and link segments, and `InlineLinks`
+draws each link as an icon in place. Concatenating the segments reproduces the input exactly,
+which is what lets the renderer substitute an icon and leave everything around it untouched.
+
+The alternative — keeping the `Link[]` array and storing an offset — has to hold two things in
+step through every edit of the title, and cannot survive the user retyping the line. Text as the
+single source of truth has one cost, accepted deliberately: editing a title shows the raw URL or
+the raw `[name](url)`. That was the explicit choice when the trade was put to the user, and it
+buys a manual naming path for free — type `[whatever you want](url)` and it renders that way.
+
+The `links` array stays supported for ledgers that already have one, rendered by the old
+`LinkChip` with × so they can be cleared. Nothing writes one any more. A stored title that is
+merely the kind label is treated as no title there too, so old chips also collapse to their icon.
+
+### Paste
+
+Pasting a bare URL is now an ORDINARY paste — the URL belongs in the text, so the browser's own
+insert is already correct, and letting it happen keeps the field's native undo intact. The only
+interception is a clipboard that also carries a name (`markdownForPaste`), which inserts
+`[name](url)`. With a row selected and no editor open there is no caret to paste at, so the link
+is appended to the end of that item's text.
+
+This reverts the pending-chip machinery from the previous round (`InsertOpts.links`,
+`EditTarget.links`, the quick-capture chip tray): once position matters, lifting the URL out of
+the text is exactly the wrong move.
+
+### Two probe bugs worth recording, both mine
+
+The rewritten probe failed twice before the feature was wrong once:
+
+- It asserted a title of `review <link> before friday` and got `review <link> before`. Quick
+  capture had parsed `friday` as the due date and removed it from the title — correct behaviour,
+  wrong test phrase.
+- It faked a titled clipboard by copying a rendered `<a>` element, which puts the anchor's
+  VISIBLE TEXT in `text/plain`. That is a genuinely different gesture (copying words, not a link)
+  and correctly pasted as text. A real "copy link" puts the URL in `text/plain` and the anchor in
+  `text/html`, which the probe now sets explicitly by overriding the copy event.

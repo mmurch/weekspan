@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Link } from '@weekspan/weekspan-core'
+import { classifyUrl } from '@weekspan/weekspan-core'
+import { glyphFor } from './glyph.js'
 import './LinkChip.css'
 
 /**
@@ -23,6 +25,12 @@ import './LinkChip.css'
  * not used. Following a link is the rarer action here — the chip exists so a
  * row can say what it is attached to at a glance — and clicking text to open a
  * new tab would collide with every other click-to-edit surface in the grid.
+ *
+ * LEGACY. Links now live in the item's text (`InlineLinks`), and nothing
+ * writes a `Link[]` any more. This still renders the ones already in a ledger.
+ * A stored title that is merely the kind label ("Google Doc") is treated as NO
+ * title and the chip shows just its icon — that stand-in said nothing the icon
+ * had not already said, which is exactly why it stopped being written.
  */
 export function LinkChip({
   link,
@@ -39,6 +47,10 @@ export function LinkChip({
   onCancelRename?: () => void
   onRemove?: () => void
 }): JSX.Element {
+  // A stored title equal to the kind label is a placeholder, not a name.
+  const label = classifyUrl(link.url).label
+  const name = link.title.trim() === label || link.title.trim() === '' ? null : link.title.trim()
+
   return (
     <span className={`ws-link ws-link--${link.kind ?? 'generic'}`}>
       <a
@@ -46,10 +58,10 @@ export function LinkChip({
         href={link.url}
         target="_blank"
         rel="noopener noreferrer"
-        title={`Open ${link.title}`}
-        aria-label={`Open ${link.title}`}
+        title={name ? `Open ${name}` : link.url}
+        aria-label={name ? `Open ${name}` : `Open ${label}`}
       >
-        {GLYPH[link.kind ?? ''] ?? '·'}
+        {glyphFor(link.kind)}
       </a>
       {editing ? (
         <LinkTitleEdit
@@ -59,18 +71,20 @@ export function LinkChip({
         />
       ) : (
         <>
-          <span
-            className="ws-link-title"
-            {...(onStartRename ? { title: 'Click to rename', onClick: onStartRename } : {})}
-          >
-            {link.title}
-          </span>
+          {name ? (
+            <span
+              className="ws-link-title"
+              {...(onStartRename ? { title: 'Click to rename', onClick: onStartRename } : {})}
+            >
+              {name}
+            </span>
+          ) : null}
           {onRemove ? (
             <button
               type="button"
               className="ws-link-remove"
               title="Remove link"
-              aria-label={`Remove ${link.title}`}
+              aria-label={`Remove ${name ?? label}`}
               onClick={onRemove}
             >
               ×
@@ -80,20 +94,6 @@ export function LinkChip({
       )}
     </span>
   )
-}
-
-/**
- * One letter per Google product, rather than an image or an icon font — the
- * design's own rule is that every mark in the grid is text or CSS, and at
- * 12px a letter on the product's colour is more legible than a shrunken logo
- * would be anyway. The colour is what you actually recognise.
- */
-const GLYPH: Record<string, string> = {
-  gdoc: 'D',
-  gsheet: 'S',
-  gslides: 'P',
-  gform: 'F',
-  gdrive: '▲',
 }
 
 /**

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createWeekspan } from './weekspan.js'
-import { addLink, classifyUrl, removeLink, setLinkTitle } from './links.js'
+import {
+  addLink,
+  classifyUrl,
+  parseTitleLinks,
+  removeLink,
+  setLinkTitle,
+  titlePlainText,
+} from './links.js'
 import type { Weekspan } from './types.js'
 import { rankSequence } from './rank.js'
 
@@ -129,5 +136,93 @@ describe('setLinkTitle', () => {
   it('leaves kind alone', () => {
     const w = addLink(weekspanWith(['a']), 'a', { url: DOC, title: 'Google Doc', kind: 'gdoc' })!
     expect(setLinkTitle(w, 'a', DOC, 'Tile spec')!.items[0]!.links![0]!.kind).toBe('gdoc')
+  })
+})
+
+describe('parseTitleLinks', () => {
+  const DOC = 'https://docs.google.com/document/d/1AbC/edit'
+
+  it('keeps a bare URL in position, with no title', () => {
+    // The normal case: an address-bar or share-dialog copy carries no title
+    // anywhere, so the link renders as the icon alone.
+    expect(parseTitleLinks(`review ${DOC} before friday`)).toEqual([
+      { kind: 'text', text: 'review ' },
+      { kind: 'link', url: DOC },
+      { kind: 'text', text: ' before friday' },
+    ])
+  })
+
+  it('reads a name out of [name](url)', () => {
+    expect(parseTitleLinks(`review [Tile spec](${DOC}) today`)).toEqual([
+      { kind: 'text', text: 'review ' },
+      { kind: 'link', url: DOC, title: 'Tile spec' },
+      { kind: 'text', text: ' today' },
+    ])
+  })
+
+  it('reproduces the input exactly when segments are concatenated', () => {
+    // What lets the renderer draw an icon in place and leave the rest alone.
+    for (const input of [
+      'plain text only',
+      `${DOC}`,
+      `a ${DOC} b [n](${DOC}) c`,
+      `trailing ${DOC}.`,
+      '',
+    ]) {
+      const rebuilt = parseTitleLinks(input)
+        .map((s) => (s.kind === 'text' ? s.text : s.title ? `[${s.title}](${s.url})` : s.url))
+        .join('')
+      expect(rebuilt).toBe(input)
+    }
+  })
+
+  it('does not swallow sentence punctuation after a bare URL', () => {
+    expect(parseTitleLinks(`see ${DOC}, then go`)).toEqual([
+      { kind: 'text', text: 'see ' },
+      { kind: 'link', url: DOC },
+      { kind: 'text', text: ', then go' },
+    ])
+  })
+
+  it('treats an empty name as no name rather than an empty label', () => {
+    expect(parseTitleLinks(`[](${DOC})`)).toEqual([{ kind: 'link', url: DOC }])
+    expect(parseTitleLinks(`[   ](${DOC})`)).toEqual([{ kind: 'link', url: DOC }])
+  })
+
+  it('does not match the URL inside a markdown link twice', () => {
+    expect(parseTitleLinks(`[n](${DOC})`).filter((s) => s.kind === 'link')).toHaveLength(1)
+  })
+
+  it('ignores non-http schemes', () => {
+    const text = 'run javascript:alert(1) and file:///etc/passwd'
+    expect(parseTitleLinks(text)).toEqual([{ kind: 'text', text }])
+  })
+
+  it('handles several links in one line', () => {
+    const b = 'https://example.com/b'
+    expect(parseTitleLinks(`${DOC} and ${b}`).filter((s) => s.kind === 'link')).toEqual([
+      { kind: 'link', url: DOC },
+      { kind: 'link', url: b },
+    ])
+  })
+
+  it('returns nothing for empty text', () => {
+    expect(parseTitleLinks('')).toEqual([])
+  })
+})
+
+describe('titlePlainText', () => {
+  const DOC = 'https://docs.google.com/document/d/1AbC/edit'
+
+  it('drops an unnamed link and keeps the words around it', () => {
+    expect(titlePlainText(`review ${DOC} before friday`)).toBe('review before friday')
+  })
+
+  it('reduces a named link to its name', () => {
+    expect(titlePlainText(`review [Tile spec](${DOC})`)).toBe('review Tile spec')
+  })
+
+  it('leaves ordinary text alone', () => {
+    expect(titlePlainText('order tile samples')).toBe('order tile samples')
   })
 })

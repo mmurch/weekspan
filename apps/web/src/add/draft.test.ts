@@ -228,30 +228,3 @@ describe('projectId', () => {
     expect(weekspan.items.find((i) => i.id === id)!.projectId).toBeUndefined()
   })
 })
-
-describe('insertItem with links', () => {
-  const DOC = 'https://docs.google.com/document/d/abc/edit'
-
-  it('creates the item WITH its chips, in the same write', () => {
-    const { weekspan, id } = insertItem(createWeekspan(), {
-      title: 'order tiles',
-      links: [{ url: DOC, title: 'Tile spec', kind: 'gdoc' }],
-    })
-    expect(weekspan.items.find((i) => i.id === id)!.links).toEqual([
-      { url: DOC, title: 'Tile spec', kind: 'gdoc' },
-    ])
-  })
-
-  it('drops a repeated URL — url is the identity mergeLinks keys on', () => {
-    const { weekspan, id } = insertItem(createWeekspan(), {
-      title: 'x',
-      links: [{ url: DOC, title: 'a' }, { url: DOC, title: 'b' }],
-    })
-    expect(weekspan.items.find((i) => i.id === id)!.links).toHaveLength(1)
-  })
-
-  it('leaves no links key at all for an empty list', () => {
-    const { weekspan, id } = insertItem(createWeekspan(), { title: 'x', links: [] })
-    expect('links' in weekspan.items.find((i) => i.id === id)!).toBe(false)
-  })
-})

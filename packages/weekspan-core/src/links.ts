@@ -19,6 +19,17 @@
  * clipboard when the source app provided one, and from the user otherwise —
  * both handled in the web app, since both are UI concerns.
  *
+ * WHERE A LINK LIVES: in the item's own text, at the position it was pasted.
+ * `parseTitleLinks` is what turns that text into segments for rendering. Two
+ * forms are recognised — a bare URL, and `[name](url)` for a link that has a
+ * name — so the text stays the single source of truth for both the link and
+ * its position. The alternative (a separate `links` array plus an offset) has
+ * to keep two things in step through every edit of the title, and cannot
+ * survive the user simply retyping the line.
+ *
+ * The older `Link[]` array on an item predates this and is no longer written.
+ * It stays supported so ledgers that already have one still render.
+ *
  * Every function here is pure and returns `null` for "nothing to write",
  * matching the `mutate(apply)` contract used by every other write path.
  */
@@ -157,4 +168,86 @@ export function setLinkTitle(
 
   const links = item.links.map((l) => (l.url === url ? { ...l, title: trimmed } : l))
   return withItem(weekspan, { ...item, links })
+}
+
+/** One piece of an item's text: literal text, or a link occupying that spot. */
+export type TitleSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'link'; url: string; title?: string }
+
+/**
+ * `[name](url)` or a bare http(s) URL. Markdown is tried first so the URL
+ * inside one is never also matched as a bare URL.
+ */
+const LINK_RE = /\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g
+
+/**
+ * Trailing punctuation a sentence puts after a URL but which is not part of
+ * it: "see https://x.com/a, then..." must not linkify the comma. A closing
+ * bracket is included, and this is why a bare URL that genuinely ends in one
+ * is the case to name a link for instead.
+ */
+const TRAILING = /[.,;:!?'")\]}]+$/
+
+/**
+ * Split `text` into segments for rendering.
+ *
+ * Always returns the whole input: concatenating every segment's source text
+ * reproduces `text` exactly, which is what lets the renderer draw an icon in
+ * place while leaving everything around it untouched. A link with an empty or
+ * whitespace-only name has no `title` — it renders as the icon alone, which is
+ * the normal case, since copying a URL from a browser's address bar or a share
+ * dialog carries no title anywhere in it.
+ */
+export function parseTitleLinks(text: string): TitleSegment[] {
+  const out: TitleSegment[] = []
+  let cursor = 0
+
+  const pushText = (value: string): void => {
+    if (value === '') return
+    const last = out[out.length - 1]
+    if (last?.kind === 'text') last.text += value
+    else out.push({ kind: 'text', text: value })
+  }
+
+  for (const m of text.matchAll(LINK_RE)) {
+    const start = m.index ?? 0
+    pushText(text.slice(cursor, start))
+
+    if (m[2] !== undefined) {
+      const title = (m[1] ?? '').trim()
+      out.push({ kind: 'link', url: m[2], ...(title !== '' ? { title } : {}) })
+      cursor = start + m[0].length
+      continue
+    }
+
+    // Bare URL: hand back any trailing sentence punctuation as text.
+    const raw = m[3] ?? ''
+    const trimmed = raw.replace(TRAILING, '')
+    if (trimmed === '') {
+      pushText(raw)
+    } else {
+      out.push({ kind: 'link', url: trimmed })
+      pushText(raw.slice(trimmed.length))
+    }
+    cursor = start + m[0].length
+  }
+
+  pushText(text.slice(cursor))
+  return out
+}
+
+/**
+ * `text` with every link reduced to its name, or dropped when it has none.
+ *
+ * For the places that need words rather than markup: a tooltip, or the
+ * "Deleted ..." message naming an item the user just blanked. A raw
+ * `[spec](https://…/d/1AbC…)` in either reads as a bug.
+ */
+export function titlePlainText(text: string): string {
+  return parseTitleLinks(text)
+    .map((seg) => (seg.kind === 'text' ? seg.text : (seg.title ?? '')))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

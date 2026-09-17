@@ -14,24 +14,22 @@ export function InlineEdit({
   placeholder,
   onCommit,
   onCancel,
-  onPasteUrl,
+  onPasteText,
 }: {
   initial: string
   placeholder?: string
   onCommit: (title: string) => void
   onCancel: () => void
   /**
-   * Offered a paste before the textarea takes it. Return true to say "I turned
-   * this into a link chip" and the text is not inserted; false lets the normal
-   * paste happen untouched.
+   * Offered a paste before the textarea takes it. Return the text to insert
+   * instead, or `null` to let the ordinary paste happen untouched.
    *
-   * This exists because clicking a task's text is how you start editing it, so
-   * "click the task, paste the link" is the gesture people actually reach for.
-   * Without this hook that gesture types a 90-character URL into the title.
-   * Only wired for existing item titles — a draft row has no item to attach a
-   * link to yet, and notes are prose.
+   * Used to preserve a link's name when the clipboard carried one, by
+   * inserting `[name](url)` rather than the bare URL. A bare URL needs no
+   * intervention at all — it belongs in the text as-is, and letting the
+   * browser paste it keeps this field's native undo working.
    */
-  onPasteUrl?: (data: DataTransfer) => boolean
+  onPasteText?: (data: DataTransfer) => string | null
 }): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null)
   const committed = useRef(false)
@@ -62,8 +60,17 @@ export function InlineEdit({
       rows={1}
       onInput={(e) => grow(e.currentTarget)}
       onPaste={(e) => {
-        if (!onPasteUrl || !e.clipboardData) return
-        if (onPasteUrl(e.clipboardData)) e.preventDefault()
+        if (!onPasteText || !e.clipboardData) return
+        const text = onPasteText(e.clipboardData)
+        if (text === null) return
+        e.preventDefault()
+        // setRangeText keeps the caret after what was inserted and leaves any
+        // selection replaced, matching what a real paste would have done.
+        const el = e.currentTarget
+        const start = el.selectionStart ?? el.value.length
+        const end = el.selectionEnd ?? start
+        el.setRangeText(text, start, end, 'end')
+        grow(el)
       }}
       onBlur={() => finish(true)}
       onKeyDown={(e) => {

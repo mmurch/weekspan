@@ -1,14 +1,13 @@
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { IsoDate, Link, Project } from '@weekspan/weekspan-core'
+import type { IsoDate, Project } from '@weekspan/weekspan-core'
 import { weekday } from '@weekspan/weekspan-core'
 import type { Capture, Token } from './capture.js'
 import { parseCapture } from './capture.js'
 import type { BulkParse } from './bulkCapture.js'
 import { parseBulk } from './bulkCapture.js'
 import { normalizeTitle } from './normalizeTitle.js'
-import { linkFromClipboard } from '../links/clipboard.js'
-import { LinkChip } from '../links/LinkChip.js'
+import { markdownForPaste } from '../links/clipboard.js'
 import './QuickCapture.css'
 
 /**
@@ -223,14 +222,6 @@ export function QuickCapture({
   // The ticked project, or null for none. Null is the default and the only
   // resting state — nothing typed can move it.
   const [projectId, setProjectId] = useState<string | null>(null)
-  /**
-   * Links pasted into the box. Pasting ONE bare URL (see `urlFromPaste`) keeps
-   * it out of the text and shows it here as a chip instead, so "type the todo,
-   * paste the doc, Enter" creates the item with the doc attached rather than
-   * with a 90-character URL in its title. That gesture was the one people
-   * reached for and the one that did nothing.
-   */
-  const [links, setLinks] = useState<Link[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const underlayRef = useRef<HTMLDivElement>(null)
 
@@ -304,15 +295,12 @@ export function QuickCapture({
         return
       }
 
-      // A capture that is ONLY a pasted link is still a todo — name it after
-      // the link rather than refusing Enter with nothing to show for it.
-      const title = normalizeTitle(capture.title) || (links[0]?.title ?? '')
+      const title = normalizeTitle(capture.title)
       if (title === '') return
       onSubmit(
         {
           ...capture,
           title,
-          ...(links.length > 0 ? { links } : {}),
           // exactOptionalPropertyTypes: "no project" is an ABSENT key, not
           // `projectId: undefined`.
           ...(effectiveProjectId ? { projectId: effectiveProjectId } : {}),
@@ -356,13 +344,29 @@ export function QuickCapture({
             }}
             onKeyDown={handleKeyDown}
             onPaste={(e) => {
-              // A project has no links, and a bulk paste is many lines — both
-              // keep the browser's ordinary paste.
-              if (projectMode || importMode) return
-              const link = linkFromClipboard(e.clipboardData)
-              if (!link) return
+              /*
+               * A pasted URL belongs in the text, where it is typed: the grid
+               * draws it as an icon at that spot. So the ordinary paste is
+               * already correct and is left alone — the one case worth
+               * intervening in is a clipboard that also carried the link's
+               * NAME, which `[name](url)` preserves. A project name is not a
+               * link, so project mode keeps the plain paste too.
+               */
+              if (projectMode) return
+              const text = markdownForPaste(e.clipboardData)
+              if (text === null) return
               e.preventDefault()
-              setLinks((cur) => (cur.some((l) => l.url === link.url) ? cur : [...cur, link]))
+              const el = e.currentTarget
+              const start = el.selectionStart ?? value.length
+              const end = el.selectionEnd ?? start
+              const next = value.slice(0, start) + text + value.slice(end)
+              setValue(next)
+              // The caret belongs after what was just inserted, not at the end
+              // of a title the user may still be typing in the middle of.
+              requestAnimationFrame(() => {
+                el.selectionStart = el.selectionEnd = start + text.length
+                autoGrow(el, underlayRef.current)
+              })
             }}
             placeholder="order tile samples thu"
             spellCheck={false}
@@ -378,18 +382,6 @@ export function QuickCapture({
           * does. Order and a separator carry that distinction without adding a
           * label to a row that has to stay one line.
           */}
-        {links.length > 0 && !projectMode && !importMode ? (
-          <div className="ws-capture-links ws-links">
-            {links.map((l) => (
-              <LinkChip
-                key={l.url}
-                link={l}
-                editing={false}
-                onRemove={() => setLinks((cur) => cur.filter((x) => x.url !== l.url))}
-              />
-            ))}
-          </div>
-        ) : null}
         <div className="ws-capture-controls">
           {/* Naming the project being CREATED, so there is nothing to file it under. */}
           {projectMode ? null : (

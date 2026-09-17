@@ -22,8 +22,7 @@
  * shape regex-over-HTML is defensible for.
  */
 
-import type { Link } from '@weekspan/weekspan-core'
-import { classifyUrl } from '@weekspan/weekspan-core'
+
 
 const ANCHOR_RE = /<a\b[^>]*?\bhref\s*=\s*("([^"]*)"|'([^']*)')[^>]*>([\s\S]*?)<\/a>/gi
 
@@ -115,19 +114,29 @@ export function urlFromPaste(text: string | null): string | null {
 }
 
 /**
- * Build a `Link` from a paste, or `null` if the paste was not a bare URL.
+ * What to insert for a paste, when it should differ from what the browser
+ * would insert anyway — otherwise `null`, meaning "let the ordinary paste
+ * happen".
  *
- * The title is the clipboard's if it gave one and the URL's kind label
- * otherwise ("Google Doc") — never the raw URL, and never a fetched guess.
- * A label that says only what kind of thing it is reads as obviously
- * provisional, which is the honest signal: it is a placeholder until renamed.
+ * A link lives in the item's text at the spot it was pasted, so the ordinary
+ * paste is already right for a bare URL: the text gets the URL, and the
+ * renderer draws it as an icon there. The one case worth intervening in is a
+ * clipboard that ALSO carries a name for the link — copying from inside a
+ * Doc, from Gmail or from Slack — where `[name](url)` preserves it.
+ *
+ * Returning `null` for everything else is deliberate rather than lazy: a
+ * native paste keeps the browser's own undo stack for the text field intact,
+ * which a programmatic insert does not.
  */
-export function linkFromClipboard(data: DataTransfer | null): Link | null {
+export function markdownForPaste(data: DataTransfer | null): string | null {
   const url = urlFromPaste(data?.getData('text/plain') ?? null)
   if (url === null) return null
 
-  const { kind, label } = classifyUrl(url)
-  const title = titleFromClipboardHtml(data?.getData('text/html') ?? null, url) ?? label
+  const title = titleFromClipboardHtml(data?.getData('text/html') ?? null, url)
+  if (title === null) return null
 
-  return { url, title, ...(kind !== undefined ? { kind } : {}) }
+  // `[` and `]` would break out of the link's own name; a newline would break
+  // the line. Neither can be escaped in this dialect, so they are removed.
+  const safe = title.replace(/[[\]]/g, '').replace(/\s+/g, ' ').trim()
+  return safe === '' ? null : `[${safe}](${url})`
 }

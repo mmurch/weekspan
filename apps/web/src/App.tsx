@@ -33,8 +33,9 @@ import {
   type MarkDrop,
 } from './interaction/useDragPreview.js'
 import { moveMark } from './interaction/markDrag.js'
-import { addLink, removeLink, setLinkTitle } from '@weekspan/weekspan-core'
-import { linkFromClipboard } from './links/clipboard.js'
+import { removeLink } from '@weekspan/weekspan-core'
+import { markdownForPaste, urlFromPaste } from './links/clipboard.js'
+import { updateTitle } from './add/draft.js'
 import { reorderItem } from './interaction/reorder.js'
 import { commitNeighbours } from './interaction/dragPreview.js'
 import type { RowVM } from './grid/viewModel.js'
@@ -279,8 +280,6 @@ function Workspace({
   )
   const [filterText, setFilterText] = useState('')
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
-  /** The link chip being renamed, by (item, url). See `GridInteraction`. */
-  const [renamingLink, setRenamingLink] = useState<{ itemId: string; url: string } | null>(null)
   const [notice, setNotice] = useState<NoticeMessage | null>(null)
   const noticeId = useRef(0)
 
@@ -490,30 +489,34 @@ function Workspace({
   }, [weekspan, selection, today, mutate, undo, redo])
 
   /**
-   * Paste a URL onto the selected row and it becomes a link chip.
+   * Paste a URL with a row selected (and no editor open) and it is appended to
+   * that item's text, where the grid draws it as an icon.
    *
-   * Deliberately narrow, because the last thing this app did with clever text
-   * handling was guess projects out of typed words and get it wrong: the paste
-   * must be a BARE http(s) URL and nothing else (`urlFromPaste`), there must
-   * already be a selected row to attach it to, and focus must not be in a text
-   * field — where Cmd+V has to keep meaning "paste text". Anything short of
-   * all three falls through to the browser's own paste, untouched.
+   * Appending is the only honest answer here: there is no caret to paste AT
+   * when you are not editing, so the end of the line is where it goes. Paste
+   * inside the title editor instead and it lands exactly where the caret is.
    *
-   * The title is whatever the clipboard's `text/html` flavour carried, which
-   * is a real document title when you copied the link from inside a doc, from
-   * Gmail or from Slack. Copying out of the address bar carries no title, so
-   * the chip lands as "Google Doc" and you click it to rename. It is never
-   * fetched — see `links.ts` in weekspan-core for why that cannot work here.
+   * Deliberately narrow, for the same reason quick capture stopped guessing
+   * projects: the paste must be a BARE http(s) URL, there must be a selected
+   * row, and focus must not be in a text field — where Cmd+V has to keep
+   * meaning "paste text". Anything else falls through to the browser.
    */
   useEffect(() => {
     function onPaste(e: ClipboardEvent): void {
       if (isTypingTarget(e.target)) return
       const sel = selection
       if (!sel) return
-      const link = linkFromClipboard(e.clipboardData)
-      if (!link) return
+      const plain = e.clipboardData?.getData('text/plain') ?? null
+      const url = urlFromPaste(plain)
+      if (url === null) return
+      // `[name](url)` when the clipboard carried a name, the bare URL otherwise.
+      const text = markdownForPaste(e.clipboardData) ?? url
       e.preventDefault()
-      void mutate((w) => addLink(w, sel.itemId, link))
+      void mutate((w) => {
+        const item = w.items.find((i) => i.id === sel.itemId)
+        if (!item) return null
+        return updateTitle(w, item.id, `${item.title} ${text}`.trim())
+      })
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
@@ -662,19 +665,6 @@ function Workspace({
             draggingId={dragState.draggingId}
             editingId={editing?.kind === 'existing' ? editing.itemId : null}
             draftSlot={editing?.kind === 'new' ? draftSlotKey(editing) : null}
-            draftLinks={editing?.kind === 'new' ? (editing.links ?? []) : []}
-            onPasteIntoDraft={(data) => {
-              const link = linkFromClipboard(data)
-              if (!link || editing?.kind !== 'new') return false
-              // Held on the draft target itself, so commitEdit creates the item
-              // and its chips in one write — and Esc drops both together.
-              setEditing((cur) =>
-                cur?.kind === 'new' && !(cur.links ?? []).some((l) => l.url === link.url)
-                  ? { ...cur, links: [...(cur.links ?? []), link] }
-                  : cur,
-              )
-              return true
-            }}
             projectRows={
               view === 'project'
                 ? // Mid-drag, render the prospective order — the same array the
@@ -712,25 +702,7 @@ function Workspace({
                 return result.weekspan
               })
             }}
-            onPasteLink={(itemId, data) => {
-              // Same resolution as the selected-row paste, so the two gestures
-              // cannot produce different chips for the same clipboard.
-              const link = linkFromClipboard(data)
-              if (!link) return false
-              void mutate((w) => addLink(w, itemId, link))
-              return true
-            }}
-            editingLink={renamingLink}
-            onStartRenameLink={(itemId, url) => setRenamingLink({ itemId, url })}
-            onCancelRenameLink={() => setRenamingLink(null)}
-            onCommitRenameLink={(title) => {
-              const target = renamingLink
-              setRenamingLink(null)
-              if (!target) return
-              // A blank title is refused by `setLinkTitle` (an unlabelled chip
-              // is unreadable), which shows up here as a plain no-op write.
-              void mutate((w) => setLinkTitle(w, target.itemId, target.url, title))
-            }}
+            onPasteText={(data) => markdownForPaste(data)}
             onRemoveLink={(itemId, url) => {
               void mutate((w) => removeLink(w, itemId, url))
             }}

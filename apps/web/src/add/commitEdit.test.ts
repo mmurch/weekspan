@@ -122,24 +122,3 @@ describe('creating a new item in a gap', () => {
     ).not.toThrow()
   })
 })
-
-describe('commitEdit — a draft with pasted links', () => {
-  const DOC = 'https://docs.google.com/document/d/abc/edit'
-  const target = (links: { url: string; title: string }[]) =>
-    ({ kind: 'new', afterId: null, beforeId: null, parentId: null, links }) as const
-
-  it('creates the item with its chips', () => {
-    const next = commitEdit(createWeekspan(), target([{ url: DOC, title: 'Tile spec' }]), 'order tiles')!
-    expect(next.items[0]!.title).toBe('order tiles')
-    expect(next.items[0]!.links).toEqual([{ url: DOC, title: 'Tile spec' }])
-  })
-
-  it('names a link-only draft after the link rather than abandoning it', () => {
-    const next = commitEdit(createWeekspan(), target([{ url: DOC, title: 'Tile spec' }]), '   ')!
-    expect(next.items[0]!.title).toBe('Tile spec')
-  })
-
-  it('still abandons a draft with neither text nor links', () => {
-    expect(commitEdit(createWeekspan(), target([]), '   ')).toBeNull()
-  })
-})
