@@ -53,7 +53,7 @@
   grid-column: span 5;
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 5; /* above .ws-seam (4): rows scroll and seams hover UNDER the frozen header */
   height: var(--ws-head-1-h);
   box-sizing: border-box;
   display: flex;
@@ -94,7 +94,7 @@
   grid-column: span 2;
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 5; /* above .ws-seam (4): rows scroll and seams hover UNDER the frozen header */
   height: var(--ws-head-1-h);
   box-sizing: border-box;
   background: var(--ws-weekend-bg);
@@ -116,7 +116,7 @@
   /* Second header row: sits directly below the week labels. */
   position: sticky;
   top: var(--ws-head-1-h);
-  z-index: 3;
+  z-index: 5; /* above .ws-seam (4): rows scroll and seams hover UNDER the frozen header */
   height: var(--ws-head-2-h);
   box-sizing: border-box;
   padding: 4px 0 5px;
