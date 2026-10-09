@@ -32,6 +32,7 @@ import { applyProjectDrop, dropFromRows } from './interaction/projectDrag.js'
 import { ProjectColorPicker } from './projects/ProjectColorPicker.js'
 import { setProjectColor } from '@weekspan/weekspan-core'
 import { shouldOpenCaptureOnSpace } from './add/openCaptureOnSpace.js'
+import { useToday } from './useToday.js'
 import { closeOutState, performClose } from './closeout/closeoutActions.js'
 import { CloseOutPanel } from './closeout/CloseOutPanel.js'
 
@@ -48,17 +49,9 @@ function isTheme(v: string | null): v is ThemeChoice {
   return v === 'system' || v === 'paper' || v === 'solarized' || v === 'warm'
 }
 
-function todayFromClock(): string {
-  const now = new Date()
-  const y = String(now.getFullYear()).padStart(4, '0')
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 export function App(): JSX.Element {
   const params = new URLSearchParams(window.location.search)
-  const today = params.get('today') ?? todayFromClock()
+  const today = useToday(params.get('today'))
   const themeParam = params.get('theme')
   const fixtureParam = params.get('fixture')
 
