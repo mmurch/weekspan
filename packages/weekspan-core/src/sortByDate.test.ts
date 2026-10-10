@@ -70,14 +70,24 @@ describe('sortByDate — buckets', () => {
   })
 
   it('a done mark outranks a stale due on the same item', () => {
-    // Matches isFinished: finishing something does not put it back on the
-    // worklist because you had once planned it for a date.
-    const w = ws([
-      { id: 'finished', marks: { '2026-08-20': { kind: 'due' }, '2026-08-25': { kind: 'done' } } },
-      { id: 'open', marks: due('2026-08-27') },
-    ])
-    expect(sortedOrder(w)).toEqual(['finished', 'open'])
-  })
+      // Matches isFinished: finishing something does not put it back on the
+      // worklist because you had once planned it for a date.
+      const w = ws([
+        { id: 'finished', marks: { '2026-08-20': { kind: 'due' }, '2026-08-25': { kind: 'done' } } },
+        { id: 'open', marks: due('2026-08-27') },
+      ])
+      expect(sortedOrder(w)).toEqual(['finished', 'open'])
+    })
+
+    it('a future due outranks a past done — the item is due again, not finished', () => {
+      // A multi-done item re-due'd for a later date must sort by that future due,
+      // not be parked in the done bucket by its earlier completions.
+      const w = ws([
+        { id: 'redone', marks: { '2026-08-20': { kind: 'done' }, '2026-08-30': { kind: 'due' } } },
+        { id: 'open', marks: due('2026-08-27') },
+      ])
+      expect(sortedOrder(w)).toEqual(['open', 'redone'])
+    })
 
   it('leaves unmarked items in their existing relative order', () => {
     const w = ws([{ id: 'x' }, { id: 'y' }, { id: 'z' }])

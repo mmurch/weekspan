@@ -75,18 +75,30 @@ function keyForRecurring(item: Item, today: IsoDate, vacationDays: VacationDays)
 }
 
 function keyForPlain(item: Item): { bucket: number; date: string } {
-  let latestDone = ''
+  // The bucket is decided by the LATEST non-skip mark, matching `isFinished`.
+  // A due that comes AFTER the last done means the item is due again — it is
+  // not finished, and must not be parked in the done bucket by an earlier
+  // completion. "Done wins over a stale due" only holds for a due EARLIER than
+  // the done; a future due is not stale.
+  const dates = Object.keys(item.marks).sort()
+  let latestKind: 'done' | 'due' | null = null
+  let latestDate = ''
+  for (let i = dates.length - 1; i >= 0; i--) {
+    const date = dates[i]!
+    const mark = getMark(item, date)
+    if (!mark || mark.kind === 'skip') continue
+    latestKind = mark.kind
+    latestDate = date
+    break
+  }
+
+  if (latestKind === 'done') return { bucket: DONE, date: latestDate }
+
   let soonestDue = ''
   for (const date of Object.keys(item.marks)) {
     const mark = getMark(item, date)
-    if (!mark) continue
-    if (mark.kind === 'done' && date > latestDone) latestDone = date
-    if (mark.kind === 'due' && (soonestDue === '' || date < soonestDue)) soonestDue = date
+    if (mark?.kind === 'due' && (soonestDue === '' || date < soonestDue)) soonestDue = date
   }
-
-  // Done wins over a stale due, matching `isFinished`: a completed item is not
-  // dragged back into the worklist by an earlier plan to do it.
-  if (latestDone !== '') return { bucket: DONE, date: latestDone }
   if (soonestDue !== '') return { bucket: DUE, date: soonestDue }
   return { bucket: NONE, date: '' }
 }
