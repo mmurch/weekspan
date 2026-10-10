@@ -293,7 +293,77 @@ describe('blocker reporting stays consistent with closeable', () => {
 
   it('names the real reason when a recurring occurrence blocks a manual close', () => {
     const rule = { freq: 'weekly', weekday: 2, anchor: '2026-01-06' } as const
-    const weekspan = makeWeekspan([makeItem('recurring', {}, rule)], null)
+    // closedThrough W33, not null: a weekspan with no history at all now starts
+    // its window at the CURRENT week (see oldestUnclosedWeek), so W34 would not
+    // be the oldest unclosed week and the sequential-close guard would fire
+    // first — hiding the message this test is actually about.
+    const weekspan = makeWeekspan([makeItem('recurring', {}, rule)], '2026-W33')
     expect(() => closeWeek(weekspan, '2026-W34', TODAY)).toThrow(/generated due/)
+  })
+})
+
+describe('vacation days and recurring occurrences', () => {
+  // Tuesdays. 2026-W34 is Mon 17 Aug – Sun 23 Aug, so the rule fires Tue 18 Aug.
+  const rule = { freq: 'weekly', weekday: 2, anchor: '2026-01-06' } as const
+  const VACATION_TUESDAY = '2026-08-18'
+
+  function awayOn(dates: string[], items = [makeItem('plants', {}, rule)]): Weekspan {
+    return { ...makeWeekspan(items, '2026-W33'), vacationDays: dates }
+  }
+
+  it('a rule firing on a vacation day is not an unresolved occurrence', () => {
+    const present = unresolvedInWeek(awayOn([]), '2026-W34')
+    expect(present.generatedOccurrences.map((b) => b.date)).toEqual([VACATION_TUESDAY])
+
+    const away = unresolvedInWeek(awayOn([VACATION_TUESDAY]), '2026-W34')
+    expect(away.generatedOccurrences).toEqual([])
+  })
+
+  it('the week still closes normally — the design\'s stated rule', () => {
+    expect(isCloseable(awayOn([]), '2026-W34', TODAY).closeable).toBe(false)
+    expect(isCloseable(awayOn([VACATION_TUESDAY]), '2026-W34', TODAY).closeable).toBe(true)
+    expect(() => closeWeek(awayOn([VACATION_TUESDAY]), '2026-W34', TODAY)).not.toThrow()
+  })
+
+  it('autoClose writes no auto-skip for a suppressed occurrence', () => {
+    // The whole point of suppressing rather than materializing: a fortnight away
+    // must not leave a trail of skip marks on every recurring item.
+    const r = autoClose(awayOn([VACATION_TUESDAY]), TODAY)
+    expect(r.autoSkipped).toBe(0)
+    expect(r.weeksClosed).toContain('2026-W34')
+    expect(r.weekspan.items.find((i) => i.id === 'plants')!.marks).toEqual({})
+  })
+
+  it('an EXPLICIT due on a vacation day still blocks — marking the day away does not retract it', () => {
+    // Vacation suppresses SYNTHESIS only. A due the user placed by hand is real
+    // backlog, and autoClose must stop on it rather than close past it. The web
+    // app's `toggleVacation` shifts such a due to the next working day, so this
+    // state arrives by merge, hand-edit, or the CLI — core has to be right anyway.
+    const planned = makeItem('passport', { [VACATION_TUESDAY]: { kind: 'due' } })
+    const weekspan = awayOn([VACATION_TUESDAY], [planned])
+    const { explicitDues } = unresolvedInWeek(weekspan, '2026-W34')
+    expect(explicitDues.map((b) => b.date)).toEqual([VACATION_TUESDAY])
+    expect(isCloseable(weekspan, '2026-W34', TODAY).closeable).toBe(false)
+    expect(autoClose(weekspan, TODAY).weeksClosed).toEqual([])
+  })
+
+  it('only the vacation date is spared; other occurrences in the week still block', () => {
+    // Two weekly items: one fires on the Tuesday spent away, one on the Wednesday.
+    const wednesday = { freq: 'weekly', weekday: 3, anchor: '2026-01-07' } as const
+    const weekspan = awayOn([VACATION_TUESDAY], [
+      makeItem('plants', {}, rule),
+      makeItem('bins', {}, wednesday),
+    ])
+    const blockers = unresolvedInWeek(weekspan, '2026-W34').generatedOccurrences
+    expect(blockers.map((b) => ({ id: b.itemId, date: b.date }))).toEqual([
+      { id: 'bins', date: '2026-08-19' },
+    ])
+
+    // autoClose resolves the Wednesday and leaves the Tuesday untouched.
+    const r = autoClose(weekspan, TODAY)
+    expect(r.autoSkipped).toBe(1)
+    const items = new Map(r.weekspan.items.map((i) => [i.id, i]))
+    expect(Object.keys(items.get('bins')!.marks)).toEqual(['2026-08-19'])
+    expect(items.get('plants')!.marks).toEqual({})
   })
 })

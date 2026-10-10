@@ -1,0 +1,101 @@
+/*
+ * Link chips.
+ *
+ * The kind colours are LITERAL rather than theme tokens, and that is the one
+ * deliberate exception to this app's token discipline. They are semantic, not
+ * decorative: recognising a Google Doc at a glance is the entire point of the
+ * feature, and Docs blue / Sheets green / Slides yellow is the only reason a
+ * 12px square communicates anything at all. Re-tinting them per theme would
+ * make each theme's chips mean something different, which is worse than a
+ * small palette mismatch. Everything else about the chip — border, text,
+ * background — stays on tokens and so still follows the theme.
+ */
+
+.ws-links { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+
+.ws-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 3px 1px 3px;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: 11px;
+  background: var(--ws-chip-bg);
+  font: 400 10px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+  max-width: 100%;
+}
+
+.ws-link-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: grid;
+  place-items: center;
+  background: var(--ws-link-dot);
+  color: #fff;
+  font: 600 8px/1 'IBM Plex Sans', sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ws-link-icon:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 1px;
+}
+
+.ws-link--gdoc   .ws-link-icon { background: #1a73e8; }
+.ws-link--gsheet .ws-link-icon { background: #0f9d58; }
+/* Slides yellow is too light for white text; this is the one that flips. */
+.ws-link--gslides .ws-link-icon { background: #f4b400; color: #3c2f00; }
+.ws-link--gform  .ws-link-icon { background: #7248b9; }
+.ws-link--gdrive .ws-link-icon { background: #5f6368; }
+
+.ws-link-title {
+  cursor: default;
+  /* A doc title runs long; the chip must not push the grid sideways. */
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-link-title[title] { cursor: text; }
+.ws-link-title[title]:hover { color: var(--ws-ink); }
+
+/*
+ * Hidden at rest rather than always shown: it sits four pixels from the rename
+ * target, and a delete control that close to an everyday click wants to be
+ * deliberate. `visibility` rather than `display` so the chip does not change
+ * width on hover and jostle its neighbours.
+ */
+.ws-link-remove {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ws-ink-4);
+  font: 400 11px/1 'IBM Plex Mono', monospace;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.ws-link:hover .ws-link-remove,
+.ws-link-remove:focus-visible { visibility: visible; }
+.ws-link-remove:hover { background: var(--ws-hair); color: var(--ws-ink); }
+
+.ws-link-edit {
+  min-width: 8ch;
+  max-width: 22ch;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--ws-sel-ring);
+  background: transparent;
+  font: 400 10px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+  outline: none;
+}

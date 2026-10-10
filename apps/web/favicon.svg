@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!--
+    Weekspan — a calendar with wings. "Weekspan" rhymes with "Wingspan", and the
+    app is a span of weeks, so the pun is the mark.
+
+    Drawn for 16px first, not scaled down from something larger. Everything is on
+    a whole or half pixel at 32/2, the strokes are 2px, and the grid is three
+    dots rather than a real 5x7 calendar face — at tab size a faithful grid turns
+    into grey mush. The wings are solid silhouettes for the same reason: outlined
+    wings disappear entirely.
+
+    Colours are literal, not tokens: a favicon is chrome drawn by the browser
+    outside the page, so it cannot see CSS custom properties and must carry its
+    own palette. #1c1b19 is the app's own ink (the `ws-active-bg` token in Paper),
+    which reads on light tab bars; the amber matches `ws-due-bg`, the one accent
+    a user already associates with "something is due".
+    (Token names are written without their leading dashes on purpose: a double
+    hyphen is illegal inside an XML comment and silently kills the whole file.)
+  -->
+  <g fill="none" fill-rule="evenodd">
+    <!--
+      Wings: broad, swept back and DOWN from the waist of the body.
+
+      An earlier pass put small wings up beside the header band and tall binding
+      rings above it. At 16px that silhouette read as a beetle — rings as
+      antennae, wings as horns. Wings belong below the shoulder line and need to
+      be big enough to survive the downscale, so these start at the body's
+      midline and reach the full width of the canvas.
+    -->
+    <path d="M7.5 14.5C4.5 14.9 1.8 16.6 0 19.4c3.4 1 6.2.4 7.5-1.2z" fill="#1c1b19" opacity=".45" />
+    <path d="M24.5 14.5c3 .4 5.7 2.1 7.5 4.9-3.4 1-6.2.4-7.5-1.2z" fill="#1c1b19" opacity=".45" />
+    <path d="M7.5 12.5C4.9 12.1 2.4 12.9 0 14.9c2.6 2 5.2 2.6 7.5 1.8z" fill="#1c1b19" />
+    <path d="M24.5 12.5c2.6-.4 5.1.4 7.5 2.4-2.6 2-5.2 2.6-7.5 1.8z" fill="#1c1b19" />
+
+    <!-- Calendar body. -->
+    <rect x="7" y="6" width="18" height="20" rx="3" fill="#1c1b19" />
+    <!-- Header band: the bit that reads as "calendar" even at 16px. -->
+    <path d="M7 9a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v3.5H7z" fill="#f0b429" />
+    <!-- Binding stubs. Short on purpose — tall ones read as antennae. -->
+    <rect x="11" y="3.5" width="2.5" height="4" rx="1.25" fill="#1c1b19" />
+    <rect x="18.5" y="3.5" width="2.5" height="4" rx="1.25" fill="#1c1b19" />
+
+    <!-- Three dots, not a grid: a week's worth of marks, legible at tab size. -->
+    <circle cx="11.5" cy="18" r="1.5" fill="#faf9f6" />
+    <circle cx="16" cy="18" r="1.5" fill="#faf9f6" />
+    <circle cx="20.5" cy="18" r="1.5" fill="#f0b429" />
+    <circle cx="11.5" cy="22.5" r="1.5" fill="#faf9f6" opacity=".45" />
+    <circle cx="16" cy="22.5" r="1.5" fill="#faf9f6" opacity=".45" />
+  </g>
+</svg>

@@ -7,7 +7,17 @@
  * Paper, Solarized dark and Warm dark without any per-theme overrides.
  */
 
+/*
+ * Fixed, like CellMenu — the caller anchors it at the click point.
+ *
+ * Without this the popover laid out in normal document flow at the end of the
+ * shell: `position: static`, stretched to the full viewport height, nowhere
+ * near the swatch that opened it. The click coordinates were being captured and
+ * then thrown away.
+ */
 .ws-colorpicker {
+  position: fixed;
+  z-index: 40;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -58,4 +68,18 @@
   color: var(--ws-panel);
   font-size: 10px;
   line-height: 1;
+}
+
+/*
+ * The "no colour" choice. A dashed outline over the panel rather than a filled
+ * swatch — it has to read as an absence, while still being obviously a button
+ * in the same row as the six colours.
+ */
+.ws-colorpicker-swatch--none {
+  background: transparent;
+  border: 1px dashed var(--ws-ink-4);
+}
+
+.ws-colorpicker-swatch--none .ws-colorpicker-check {
+  color: var(--ws-ink);
 }

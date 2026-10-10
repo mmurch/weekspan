@@ -8,6 +8,7 @@ import {
   rankBetween,
   rankForInsert,
   rankSequence,
+  repairDuplicateRanks,
   siblingsOf,
 } from './rank.js'
 import type { Item } from './types.js'
@@ -189,10 +190,144 @@ describe('rankForInsert', () => {
     const [r1, r2] = rankSequence(2) as [string, string]
     const a = item('a', r1)
     const b = item('b', r2)
-    const inserted = rankForInsert(a, b)
+    const inserted = rankForInsert(a, b, [a, b])
     expect(a.rank < inserted).toBe(true)
     expect(inserted < b.rank).toBe(true)
     expect([a, b].map((i) => i.rank)).toEqual([r1, r2]) // untouched
+  })
+
+  it('resolves a missing upper bound from the scope instead of appending', () => {
+    const [r1, r2, r3] = rankSequence(3) as [string, string, string]
+    const scope = [item('a', r1), item('b', r2), item('c', r3)]
+    // "after a", with no upper bound named: it must land between a and b, not
+    // above c.
+    const inserted = rankForInsert(scope[0]!, null, scope)
+    expect(r1 < inserted).toBe(true)
+    expect(inserted < r2).toBe(true)
+  })
+
+  it('resolves a missing lower bound from the scope', () => {
+    const [r1, r2, r3] = rankSequence(3) as [string, string, string]
+    const scope = [item('a', r1), item('b', r2), item('c', r3)]
+    const inserted = rankForInsert(null, scope[2]!, scope)
+    expect(r2 < inserted).toBe(true)
+    expect(inserted < r3).toBe(true)
+  })
+
+  it('appends at the end of the scope when neither bound is named', () => {
+    const [r1, r2] = rankSequence(2) as [string, string]
+    const scope = [item('a', r1), item('b', r2)]
+    expect(rankForInsert(null, null, scope) > r2).toBe(true)
+    expect(rankForInsert(null, null, [])).toBe(initialRank())
+  })
+
+  it('resolves against ranks, not array order', () => {
+    const [r1, r2] = rankSequence(2) as [string, string]
+    // The caller's scope is in insertion order, not rank order — which is what
+    // `weekspan.items` actually looks like after an insert.
+    const scope = [item('b', r2), item('a', r1)]
+    const inserted = rankForInsert(scope[1]!, null, scope)
+    expect(r1 < inserted && inserted < r2).toBe(true)
+  })
+
+  /**
+   * The bug this whole signature exists for. Two project groups each appending
+   * "at the end of the group" is not two appends at the end of the RANK SCOPE,
+   * and `midpoint(a, undefined)` is deterministic — so treating the missing
+   * bound as infinity handed both groups the same key.
+   */
+  it('never mints a rank that already exists, no matter which group appends', () => {
+    const items: Item[] = []
+    const appendToGroupEnd = (group: string, id: string): void => {
+      const mine = items.filter((i) => i.title === group)
+      const last = [...mine].sort(byRank).pop() ?? null
+      const rank = rankForInsert(last, null, items)
+      items.push({ id, title: group, rank, parentId: null, marks: {} })
+    }
+
+    for (let round = 0; round < 12; round++) {
+      appendToGroupEnd('work', `w${round}`)
+      appendToGroupEnd('med', `m${round}`)
+    }
+
+    const ranks = items.map((i) => i.rank)
+    expect(new Set(ranks).size).toBe(ranks.length)
+  })
+})
+
+describe('repairDuplicateRanks', () => {
+  it('leaves a healthy list completely alone', () => {
+    const [r1, r2, r3] = rankSequence(3) as [string, string, string]
+    const items = [item('a', r1), item('b', r2), item('c', r3)]
+    const result = repairDuplicateRanks(items)
+    expect(result.repairs).toEqual([])
+    expect(result.items.map((i) => i.rank)).toEqual([r1, r2, r3])
+  })
+
+  it('separates colliding ranks while preserving displayed order', () => {
+    const [r1, r2] = rankSequence(2) as [string, string]
+    // Two pairs sharing a key, exactly the shape a project-view append produced.
+    const items = [item('a', r1), item('b', r1), item('c', r2), item('d', r2)]
+    const { items: fixed, repairs } = repairDuplicateRanks(items)
+
+    expect(repairs.map((r) => r.id)).toEqual(['b', 'd'])
+    const ranks = fixed.map((i) => i.rank)
+    expect(new Set(ranks).size).toBe(4)
+    expect([...fixed].sort(byRank).map((i) => i.id)).toEqual(['a', 'b', 'c', 'd'])
+    // The first of each colliding pair does not move.
+    expect(fixed.find((i) => i.id === 'a')!.rank).toBe(r1)
+    expect(fixed.find((i) => i.id === 'c')!.rank).toBe(r2)
+  })
+
+  it('repairs a run of three sharing one rank', () => {
+    const [r1, r2] = rankSequence(2) as [string, string]
+    const items = [item('a', r1), item('b', r1), item('c', r1), item('d', r2)]
+    const { items: fixed } = repairDuplicateRanks(items)
+    const ranks = fixed.map((i) => i.rank)
+    expect(new Set(ranks).size).toBe(4)
+    expect([...fixed].sort(byRank).map((i) => i.id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('keeps the first of a colliding pair in place, whichever it is', () => {
+    const [r1] = rankSequence(1) as [string]
+    // Same two items, opposite file order. Whoever comes FIRST keeps its rank,
+    // so the repair never reorders what the user is looking at.
+    const one = repairDuplicateRanks([item('b', r1), item('a', r1)])
+    expect(one.repairs.map((r) => r.id)).toEqual(['a'])
+    expect(one.items.find((i) => i.id === 'b')!.rank).toBe(r1)
+
+    const two = repairDuplicateRanks([item('a', r1), item('b', r1)])
+    expect(two.repairs.map((r) => r.id)).toEqual(['b'])
+    expect(two.items.find((i) => i.id === 'a')!.rank).toBe(r1)
+  })
+
+  it('is reproducible, so two devices repairing the same file agree', () => {
+    const [r1, r2] = rankSequence(2) as [string, string]
+    // The input is a freshly parsed file, so both devices see the same order.
+    const file = [item('a', r1), item('b', r1), item('c', r2), item('d', r2)]
+    const one = repairDuplicateRanks(file)
+    const two = repairDuplicateRanks(file)
+    expect(one.items.map((i) => i.rank)).toEqual(two.items.map((i) => i.rank))
+  })
+
+  it('scopes the repair to siblings — the same rank under two parents is legal', () => {
+    const [r1, r2] = rankSequence(2) as [string, string]
+    const items = [item('p1', r1), item('p2', r2), item('c1', r1, 'p1'), item('c2', r1, 'p2')]
+    expect(repairDuplicateRanks(items).repairs).toEqual([])
+  })
+
+  it('leaves every insert point usable afterwards', () => {
+    const [r1, r2] = rankSequence(2) as [string, string]
+    const { items: fixed } = repairDuplicateRanks([
+      item('a', r1),
+      item('b', r1),
+      item('c', r2),
+      item('d', r2),
+    ])
+    const sorted = [...fixed].sort(byRank)
+    for (let i = 1; i < sorted.length; i++) {
+      expect(() => rankForInsert(sorted[i - 1]!, sorted[i]!, fixed)).not.toThrow()
+    }
   })
 })
 

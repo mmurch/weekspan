@@ -52,17 +52,31 @@ function parse(ctx: CommandContext): ListFilters {
   }
 }
 
-/** Dates an item shows a mark on within `dates`, explicit or generated. */
-function marksIn(item: Item, dates: IsoDate[]): Array<{ date: IsoDate; kind: string }> {
+/**
+ * Dates an item shows a mark on within `dates`, explicit or generated.
+ * `vacationDays` is what keeps a recurring rule from rendering a synthesized
+ * `due` on a day the user marked away — see `effectiveMark`.
+ */
+function marksIn(
+  item: Item,
+  dates: IsoDate[],
+  vacationDays: readonly IsoDate[],
+): Array<{ date: IsoDate; kind: string }> {
   const out: Array<{ date: IsoDate; kind: string }> = []
   for (const date of dates) {
-    const mark = effectiveMark(item, date)
+    const mark = effectiveMark(item, date, vacationDays)
     if (mark) out.push({ date, kind: mark.kind })
   }
   return out
 }
 
-function keep(item: Item, f: ListFilters, today: IsoDate, dates: IsoDate[]): boolean {
+function keep(
+  item: Item,
+  f: ListFilters,
+  today: IsoDate,
+  dates: IsoDate[],
+  vacationDays: readonly IsoDate[],
+): boolean {
   if (f.project !== undefined && (item.projectId ?? null) !== f.project) return false
 
   const state = displayState(item, today)
@@ -71,7 +85,7 @@ function keep(item: Item, f: ListFilters, today: IsoDate, dates: IsoDate[]): boo
 
   if (f.dueBefore !== undefined) {
     const hasEarlierDue = dates.some(
-      (d) => d < f.dueBefore! && effectiveMark(item, d)?.kind === 'due',
+      (d) => d < f.dueBefore! && effectiveMark(item, d, vacationDays)?.kind === 'due',
     )
     if (!hasEarlierDue) return false
   }
@@ -99,7 +113,7 @@ export async function runList(
 
   const ordered = orderItems(weekspan.items)
   const rows = ordered
-    .filter((i) => keep(i, filters, ctx.today, dates))
+    .filter((i) => keep(i, filters, ctx.today, dates, weekspan.vacationDays))
     .map((item) => ({
       id: item.id,
       title: item.title,
@@ -107,7 +121,7 @@ export async function runList(
       indent: item.parentId == null ? 0 : 1,
       projectId: item.projectId ?? null,
       recurring: Boolean(item.recurrence),
-      marks: marksIn(item, dates),
+      marks: marksIn(item, dates, weekspan.vacationDays),
     }))
 
   const human =

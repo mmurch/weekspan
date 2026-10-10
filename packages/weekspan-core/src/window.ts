@@ -44,7 +44,34 @@ export interface WeekWindow {
 }
 
 /**
+ * True when nothing has ever been recorded before `date`.
+ *
+ * Explicit marks only. A recurring rule with an anchor in the past would
+ * "fire" through all of history, which would make every new file look like it
+ * had a backlog on day one — the opposite of what a fresh file is.
+ */
+function hasMarksBefore(weekspan: Weekspan, date: IsoDate): boolean {
+  for (const item of weekspan.items) {
+    for (const markDate of Object.keys(item.marks)) {
+      if (markDate < date) return true
+    }
+  }
+  return false
+}
+
+/**
  * The window's left edge: the oldest week not yet closed out.
+ *
+ * A brand-new weekspan starts at the CURRENT week, not the one before it.
+ * `closedThrough` is null on a fresh file, which used to mean "last week is
+ * unclosed" and put an empty, uncloseable past week on screen before the user
+ * had entered anything — the app opened looking like it was already behind.
+ * With nothing recorded before this week there is, by definition, nothing there
+ * to close, so the honest left edge is this week. This is a display rule, not a
+ * close-out: `closedThrough` is not written, nothing is archived, and the
+ * moment a mark exists in a past week the edge moves back to include it (which
+ * is what happens naturally next week, so the week you just used stays visible
+ * and closeable).
  *
  * Clamped so it never exceeds `currentWeek` — `closedThrough` at or beyond
  * the current week (clock skew, a hand-edited file, travel across
@@ -53,6 +80,9 @@ export interface WeekWindow {
  */
 export function oldestUnclosedWeek(weekspan: Weekspan, today: IsoDate): IsoWeek {
   const currentWeek = weekOf(today)
+  if (weekspan.closedThrough === null && !hasMarksBefore(weekspan, weekStart(currentWeek))) {
+    return currentWeek
+  }
   const naive = weekspan.closedThrough === null ? addWeeks(currentWeek, -1) : addWeeks(weekspan.closedThrough, 1)
   return weeksBetween(currentWeek, naive) > 0 ? currentWeek : naive
 }

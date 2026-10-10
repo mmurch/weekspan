@@ -42,11 +42,47 @@
   z-index: 5;
   display: flex;
   align-items: flex-end;
-  padding: 0 12px 6px 32px;
+  /* `gap` would sit the button right against the label; pushing it to the far
+     end keeps the header reading as a label with an affordance, not a toolbar. */
+  justify-content: space-between;
+  padding: 0 10px 5px 32px;
   font: 600 9px/1.4 'IBM Plex Mono', monospace;
   letter-spacing: 0.08em;
   color: var(--ws-ink-3);
   background: var(--ws-subtle);
+}
+
+/*
+ * Sort-by-date. Recessive until pointed at: it reorders the whole list, so it
+ * should be findable but never look like the thing to press on arrival.
+ */
+.ws-head-sort {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-bottom: -3px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-2);
+  background: transparent;
+  color: var(--ws-ink-3);
+  cursor: pointer;
+}
+
+.ws-head-sort:hover {
+  border-color: var(--ws-hair-strong);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+}
+
+.ws-head-sort:active {
+  background: var(--ws-hair);
+}
+
+.ws-head-sort:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 1px;
 }
 
 .ws-head-weeklabel {
@@ -97,7 +133,10 @@
   z-index: 5; /* above .ws-seam (4): rows scroll and seams hover UNDER the frozen header */
   height: var(--ws-head-1-h);
   box-sizing: border-box;
-  background: var(--ws-weekend-bg);
+  /* Sticky, so opaque — same reason as .ws-day--weekend below. */
+  background:
+    linear-gradient(var(--ws-weekend-bg), var(--ws-weekend-bg)),
+    var(--ws-subtle);
   border-bottom: 1px solid var(--ws-hair);
   border-left: 1px solid var(--ws-hair);
 }
@@ -128,8 +167,31 @@
   border-bottom: 1px solid var(--ws-hair-strong);
 }
 
-.ws-day--weekend { background: var(--ws-weekend-bg); }
-.ws-day--past { background: var(--ws-past-tint); }
+/*
+ * Sticky headers must be OPAQUE.
+ *
+ * --ws-weekend-bg and --ws-past-tint are translucent by design: on a cell they
+ * are a wash laid over the row beneath, which is exactly right (see
+ * .ws-cell--weekend / .ws-cell--past, which keep them raw). But .ws-day is
+ * `position: sticky`, so setting the tint as the whole background replaced the
+ * opaque --ws-subtle base with a 3%-alpha film — and every row scrolling under
+ * the header showed straight through it, chips and gridlines included.
+ *
+ * Layering the tint over --ws-subtle keeps the intended colour to the pixel
+ * while making the result fully opaque. Doing it here rather than inventing
+ * per-theme opaque tokens means the four themes stay in sync for free.
+ */
+.ws-day--weekend {
+  background:
+    linear-gradient(var(--ws-weekend-bg), var(--ws-weekend-bg)),
+    var(--ws-subtle);
+}
+
+.ws-day--past {
+  background:
+    linear-gradient(var(--ws-past-tint), var(--ws-past-tint)),
+    var(--ws-subtle);
+}
 
 .ws-day-letter {
   font: 600 10px/1 'IBM Plex Sans', sans-serif;
@@ -223,10 +285,17 @@
   min-width: 0;
 }
 
-.ws-title--finished { padding-top: 4px; padding-bottom: 4px; }
-
+/*
+ * Line-height is an integer PIXEL value, not a ratio.
+ *
+ * 12.5px * 1.4 = 17.5px, and the inline editor is a textarea auto-sized to its
+ * `scrollHeight`, which is an integer — so swapping the text for the editor
+ * grew the row by half a pixel and nudged the whole list. A whole-pixel line
+ * box makes the div and the textarea measure identically. `.ws-inline-edit`
+ * must keep this value in step.
+ */
 .ws-title-text {
-  font: 400 12.5px/1.4 'IBM Plex Sans', sans-serif;
+  font: 400 12.5px/18px 'IBM Plex Sans', sans-serif;
   color: var(--ws-ink);
   text-wrap: pretty;
   /* Never truncate. The handoff is explicit: titles wrap to as many lines as
@@ -234,8 +303,16 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * Completion changes INK, never metrics.
+ *
+ * This used to shrink the font to 11.5px and .ws-title--finished cut vertical
+ * padding from 7px to 4px, so ticking something off shortened its row by ~7px
+ * and shunted every row below it up the screen. Strikethrough and colour carry
+ * the meaning on their own; size is not doing any work here it was worth that
+ * for.
+ */
 .ws-title-text--finished {
-  font-size: 11.5px;
   text-decoration: line-through;
   color: var(--ws-done-fg-row);
 }
@@ -253,6 +330,18 @@
  * while every other row stayed put, letting day cells show through the frozen
  * column. Sticky already establishes a containing block for the absolute elbow.
  */
+/*
+ * The item column is selectable now, so it needs the same "you are here" ring
+ * the day cells use. Drawn as an inset shadow, never a border: .ws-title is
+ * sticky with a fixed padding, and a real border would add a pixel and shift
+ * the row — the exact class of jitter the finished/editing states were just
+ * fixed for.
+ */
+.ws-title--selected {
+  box-shadow: inset 0 0 0 2px var(--ws-sel-ring);
+  background: var(--ws-sel-bg);
+}
+
 .ws-title--child { padding-left: 26px; }
 
 .ws-elbow {
@@ -275,21 +364,7 @@
 
 .ws-note-bullet { color: var(--ws-ink-4); margin-right: 4px; }
 
-.ws-links { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-
-.ws-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px 1px 3px;
-  border: 1px solid var(--ws-hair-strong);
-  border-radius: 11px;
-  background: var(--ws-chip-bg);
-  font: 400 10px/1.5 'IBM Plex Sans', sans-serif;
-  color: var(--ws-ink-2);
-}
-
-.ws-link-dot { width: 11px; height: 11px; border-radius: 2px; background: var(--ws-link-dot); }
+/* Link chips live in ../links/LinkChip.css, with the component that draws them. */
 
 /* ---- cells ----------------------------------------------------------- */
 
@@ -367,6 +442,14 @@
 
 .ws-addrow {
   grid-column: 1 / -1;
+  /* Now a <button>: reset the UA chrome so it still reads as a quiet row. */
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
   position: sticky;
   left: 0;
   /* Spans the full width, so it must not scroll out of reach sideways. */
@@ -379,6 +462,16 @@
   border-bottom: 1px solid var(--ws-hair);
   font: 400 11.5px/1 'IBM Plex Sans', sans-serif;
   color: var(--ws-ink-4);
+}
+
+.ws-addrow:hover {
+  background: var(--ws-subtle);
+  color: var(--ws-ink-2);
+}
+
+.ws-addrow:hover .ws-addrow-plus {
+  border-color: var(--ws-ink-3);
+  color: var(--ws-ink-2);
 }
 
 .ws-addrow-plus {
@@ -435,6 +528,34 @@ button.ws-week-close--blocked {
 /* touch-action:none stops a touch drag from being stolen by page scroll. */
 .ws-grip { touch-action: none; }
 .ws-grip:active { cursor: grabbing; }
+
+/*
+ * A mark chip is the grid's second grip: sideways it moves the mark between
+ * days, up and down it reorders the row exactly as the item-column grip does.
+ * `touch-action: none` is what stops the browser claiming the gesture as a
+ * scroll before the first pointermove ever reaches us — without it the
+ * horizontal half is unusable on a trackpad-driven touch surface.
+ *
+ * Only an EXPLICIT mark gets this. A generated occurrence has no stored mark
+ * to move, so it never gets the class and never shows a grab cursor.
+ */
+.ws-chip--draggable {
+  cursor: grab;
+  touch-action: none;
+}
+.ws-chip--draggable:active { cursor: grabbing; }
+
+/*
+ * The chip mid-flight, drawn on the column under the pointer rather than the
+ * one it came from. Lifted off the page rather than tinted: the chip's own
+ * colour is what says whether it is a due, a done or a skip, and recolouring
+ * it would destroy the one thing the preview is meant to show.
+ */
+.ws-chip--lifted {
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.28);
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 1px;
+}
 
 /*
  * The lifted row while dragging. Rows are `display: contents`, so the row itself
@@ -548,15 +669,78 @@ button.ws-week-close--blocked {
   flex: none;
 }
 
-/* The unassigned bucket has no colour to pick, so its swatch is inert. */
+/*
+ * Colourless is now a CHOICE, not a constraint — the unassigned bucket opens
+ * the same picker a project does. The dashed outline says "no colour set"
+ * rather than "not available", so the cursor stays a pointer.
+ */
 .ws-divider-swatch--none {
   border: 1px dashed var(--ws-ink-4);
   background: transparent;
-  cursor: default;
+}
+
+/*
+ * Delete-project button. Hidden until the group is hovered or the button itself
+ * is focused — a rare, destructive action should be findable, not prominent.
+ * `visibility` rather than `display` so it never reflows the divider on hover.
+ */
+.ws-divider-delete {
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-2);
+  font: 400 13px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.ws-divider:hover .ws-divider-delete,
+.ws-divider-delete:focus-visible {
+  visibility: visible;
+}
+
+.ws-divider-delete:hover {
+  border-color: var(--ws-hair-strong);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
 }
 
 .ws-divider-name {
   font: 600 12px/1 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+/* Only real projects rename — the unassigned bucket has no name to change. */
+.ws-divider-name--editable {
+  cursor: text;
+  border-radius: var(--ws-radius-2);
+}
+
+.ws-divider-name--editable:hover {
+  box-shadow: 0 0 0 3px var(--ws-hair);
+  background: var(--ws-hair);
+}
+
+/*
+ * The editor inherits the header's own type rather than .ws-title-text's, so
+ * the name does not visibly change size or weight the moment you click it —
+ * the same "editing must not move anything" rule the row heights follow.
+ */
+.ws-divider-name--editing {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+}
+
+.ws-divider-name--editing .ws-inline-edit {
+  font: 600 12px/1.3 'IBM Plex Sans', sans-serif;
   color: var(--ws-ink);
 }
 

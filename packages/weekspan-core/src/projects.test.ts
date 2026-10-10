@@ -8,6 +8,7 @@ import {
   assignProject,
   findProjectByName,
   nextProjectColor,
+  projectDeletionImpact,
   removeProject,
   renameProject,
   setProjectColor,
@@ -351,5 +352,123 @@ describe('nextProjectColor', () => {
     })
     // barA used twice, barB once, barC..F unused (tied at zero) -> barC wins the tie.
     expect(nextProjectColor(weekspan)).toBe('barC')
+  })
+})
+
+describe('removeProject — keep-or-delete choice', () => {
+  function withProject(): Weekspan {
+    return createWeekspan({
+      projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2', name: 'Other' })],
+      items: [
+        makeItem({ id: 'a', projectId: 'p1' }),
+        makeItem({ id: 'a-kid', parentId: 'a', projectId: 'p1' }),
+        makeItem({ id: 'b', projectId: 'p1' }),
+        // A child of a doomed item that belongs to a DIFFERENT project.
+        makeItem({ id: 'b-kid', parentId: 'b', projectId: 'p2' }),
+        makeItem({ id: 'c', projectId: 'p2' }),
+        makeItem({ id: 'd' }),
+      ],
+    })
+  }
+
+  it('defaults to keeping the items — the common case', () => {
+    // Retiring a long-lived category rarely means the work in it stopped
+    // mattering, so the safe reading is the one you get without asking.
+    const result = removeProject(withProject(), 'p1')!
+    expect(result.items.map((i) => i.id).sort()).toEqual(['a', 'a-kid', 'b', 'b-kid', 'c', 'd'])
+    expect(result.items.find((i) => i.id === 'a')!.projectId).toBeNull()
+    expect(result.items.find((i) => i.id === 'b')!.projectId).toBeNull()
+    // Other projects are untouched.
+    expect(result.items.find((i) => i.id === 'c')!.projectId).toBe('p2')
+  })
+
+  it("'unassign' is explicit shorthand for the same thing", () => {
+    const a = removeProject(withProject(), 'p1')
+    const b = removeProject(withProject(), 'p1', 'unassign')
+    expect(b).toEqual(a)
+  })
+
+  it("'deleteItems' removes the project's items", () => {
+    const result = removeProject(withProject(), 'p1', 'deleteItems')!
+    expect(result.items.map((i) => i.id).sort()).toEqual(['c', 'd'])
+    expect(result.projects.map((p) => p.id)).toEqual(['p2'])
+  })
+
+  it("'deleteItems' also takes children in OTHER projects, because parentId cannot dangle", () => {
+    // b-kid is in p2, not p1 — but its parent b is going, and `parse` rejects an
+    // item whose parentId names nothing. This is the one thing the mode removes
+    // that the user did not literally name, and it is forced by the format.
+    const result = removeProject(withProject(), 'p1', 'deleteItems')!
+    expect(result.items.some((i) => i.id === 'b-kid')).toBe(false)
+    for (const item of result.items) {
+      if (item.parentId != null) expect(result.items.some((i) => i.id === item.parentId)).toBe(true)
+    }
+  })
+
+  it('leaves no dangling projectId under either mode', () => {
+    for (const mode of ['unassign', 'deleteItems'] as const) {
+      const result = removeProject(withProject(), 'p1', mode)!
+      const ids = new Set(result.projects.map((p) => p.id))
+      for (const item of result.items) {
+        if (item.projectId != null) expect(ids.has(item.projectId)).toBe(true)
+      }
+    }
+  })
+
+  it('returns null for an unknown project under either mode', () => {
+    expect(removeProject(withProject(), 'nope', 'unassign')).toBeNull()
+    expect(removeProject(withProject(), 'nope', 'deleteItems')).toBeNull()
+  })
+
+  it('never mutates the input', () => {
+    const w = withProject()
+    const before = JSON.stringify(w)
+    removeProject(w, 'p1', 'deleteItems')
+    removeProject(w, 'p1', 'unassign')
+    expect(JSON.stringify(w)).toBe(before)
+  })
+})
+
+describe('projectDeletionImpact', () => {
+  function withProject(): Weekspan {
+    return createWeekspan({
+      projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2', name: 'Other' })],
+      items: [
+        makeItem({ id: 'a', projectId: 'p1' }),
+        makeItem({ id: 'a-kid', parentId: 'a', projectId: 'p1' }),
+        makeItem({ id: 'b', projectId: 'p1' }),
+        makeItem({ id: 'b-kid', parentId: 'b', projectId: 'p2' }),
+        makeItem({ id: 'c', projectId: 'p2' }),
+      ],
+    })
+  }
+
+  it('separates direct items from swept-up children', () => {
+    const impact = projectDeletionImpact(withProject(), 'p1')
+    expect(impact.directItems.map((i) => i.id).sort()).toEqual(['a', 'a-kid', 'b'])
+    // a-kid is already counted as direct, so it must not be double-counted here.
+    expect(impact.orphanedChildren.map((i) => i.id)).toEqual(['b-kid'])
+  })
+
+  it('its total matches what deleteItems actually removes — no undercount', () => {
+    // The point of counting: a confirmation that says "3 items" and removes 4 is
+    // the kind of mismatch people only notice afterwards.
+    const w = withProject()
+    const impact = projectDeletionImpact(w, 'p1')
+    const predicted = impact.directItems.length + impact.orphanedChildren.length
+    const after = removeProject(w, 'p1', 'deleteItems')!
+    expect(w.items.length - after.items.length).toBe(predicted)
+  })
+
+  it('is empty for a project with nothing in it', () => {
+    const impact = projectDeletionImpact(createWeekspan({ projects: [makeProject()] }), 'p1')
+    expect(impact.directItems).toEqual([])
+    expect(impact.orphanedChildren).toEqual([])
+  })
+
+  it('is empty for an unknown project', () => {
+    const impact = projectDeletionImpact(withProject(), 'nope')
+    expect(impact.directItems).toEqual([])
+    expect(impact.orphanedChildren).toEqual([])
   })
 })

@@ -47,6 +47,14 @@ export async function mutate(
     )
   }
 
+  if (result.ranksRepaired > 0) {
+    // Both sides added an item at the same position and computed the same key.
+    // Nothing is lost, but the merge moved a row, so say so.
+    out.warn(
+      `${result.ranksRepaired} item(s) were given a fresh rank: both writers inserted at the same position.`,
+    )
+  }
+
   return { code: EXIT.OK, weekspan: result.written ? next : loaded.weekspan, written: result.written }
 }
 

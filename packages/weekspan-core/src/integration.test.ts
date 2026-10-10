@@ -77,9 +77,9 @@ describe('a realistic session, end to end', () => {
     const l = baseWeekspan()
     const plants = l.items.find((i) => i.id === 'plants')!
     // Mondays in the window are generated as due...
-    expect(effectiveMark(plants, '2026-08-24')?.kind).toBe('due')
-    expect(effectiveMark(plants, '2026-08-31')?.kind).toBe('due')
-    expect(effectiveMark(plants, '2026-08-25')).toBeUndefined()
+    expect(effectiveMark(plants, '2026-08-24', [])?.kind).toBe('due')
+    expect(effectiveMark(plants, '2026-08-31', [])?.kind).toBe('due')
+    expect(effectiveMark(plants, '2026-08-25', [])).toBeUndefined()
     // ...but the serialized file still holds zero marks for it.
     expect(JSON.parse(serialize(l)).items.find((i: Item) => i.id === 'plants').marks).toEqual({})
   })

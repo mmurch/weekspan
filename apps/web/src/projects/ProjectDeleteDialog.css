@@ -1,0 +1,112 @@
+/*
+ * Matches CloseOutPanel's modal shell — same backdrop, panel fill, hairline,
+ * radius and shadow — so the two read as the same kind of interruption. Every
+ * colour is a token, so all three themes work with no per-theme overrides.
+ */
+
+.ws-projdel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 16vh;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.ws-projdel {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  padding: 16px 18px 14px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-projdel-title {
+  margin: 0 0 8px;
+  font: 500 13.5px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink);
+}
+
+.ws-projdel-name {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+}
+
+.ws-projdel-lede {
+  margin: 0 0 14px;
+  font: 400 12px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+}
+
+/*
+ * Wraps rather than scrolling: three buttons at 380px are tight in the wider
+ * type of a dark theme, and a clipped destructive button is worse than a tall
+ * dialog.
+ */
+.ws-projdel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ws-projdel-btn {
+  padding: 6px 11px;
+  appearance: none;
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-2);
+  background: var(--ws-surface);
+  font: 400 11.5px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+  cursor: pointer;
+}
+
+.ws-projdel-btn:hover {
+  background: var(--ws-subtle);
+  color: var(--ws-ink);
+}
+
+.ws-projdel-btn:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 1px;
+}
+
+/* The safe option leads, and carries the focus ring on open. */
+.ws-projdel-btn--primary {
+  background: var(--ws-active-bg);
+  border-color: transparent;
+  color: var(--ws-active-fg);
+  font-weight: 500;
+}
+
+.ws-projdel-btn--primary:hover {
+  background: var(--ws-active-bg);
+  color: var(--ws-active-fg);
+  opacity: 0.9;
+}
+
+/*
+ * Destructive: reads as a warning without being a big red button competing for
+ * the eye. `--ws-due-fg` is the one warm/alarm ink the palette already defines
+ * in every theme.
+ */
+.ws-projdel-btn--danger {
+  color: var(--ws-due-fg);
+  border-color: var(--ws-due-fg);
+}
+
+.ws-projdel-btn--danger:hover {
+  background: var(--ws-due-bg);
+  color: var(--ws-due-fg);
+}
+
+.ws-projdel-note {
+  margin: 12px 0 0;
+  font: 400 10.5px/1.5 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}

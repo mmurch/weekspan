@@ -42,6 +42,12 @@ export interface WriteResult {
   merged: boolean
   /** Fields where both sides changed; resolved toward ours. */
   conflicts: Array<{ itemId: string | null; field: string }>
+  /**
+   * Items the merge had to give a fresh rank because both writers minted the
+   * same one. Not a conflict — nothing is lost — but a row moved, so the UI
+   * says so rather than letting the file change under the user in silence.
+   */
+  ranksRepaired: number
 }
 
 /**
@@ -72,7 +78,7 @@ export class MemoryStore implements FileStore {
    */
   async write(next: string, _baseline: string | null = null): Promise<WriteResult> {
     this.text = next
-    return { text: next, merged: false, conflicts: [] }
+    return { text: next, merged: false, conflicts: [], ranksRepaired: 0 }
   }
 
   async hasChanged(baseline: string | null): Promise<boolean> {

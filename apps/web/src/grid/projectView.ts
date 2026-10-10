@@ -81,9 +81,14 @@ function computeMeta(items: readonly Item[], today: IsoDate): string {
 export function buildProjectView(
   weekspan: Weekspan,
   today: IsoDate,
-  opts?: { minWeeks?: number; collapsed?: ReadonlySet<string | null> },
+  opts?: {
+    minWeeks?: number
+    collapsed?: ReadonlySet<string | null>
+    /** Colour for the unassigned bucket. Per-device; see `projects/noProjectColor.ts`. */
+    noProjectColorToken?: string | null
+  },
 ): ProjectVM {
-  const grid = buildGrid(weekspan, today, opts?.minWeeks ?? 0)
+  const grid = buildGrid(weekspan, today, opts?.minWeeks ?? 0, opts?.noProjectColorToken ?? null)
   const collapsed = opts?.collapsed ?? new Set<string | null>()
 
   const itemsById = new Map<string, Item>(weekspan.items.map((i) => [i.id, i]))
@@ -189,7 +194,10 @@ export function buildProjectView(
   // rule governs project groups; this bucket is explicitly the exception the
   // user asked for so unassigned work stays reachable without competing with
   // real projects for top position.
-  emitGroup(null, 'No project', null)
+  // The unassigned bucket can carry a colour too. It is per-device rather than
+  // a field in the file — see `projects/noProjectColor.ts` for why the ledger
+  // deliberately does not hold it.
+  emitGroup(null, 'No project', opts?.noProjectColorToken ?? null)
 
   return {
     rows,

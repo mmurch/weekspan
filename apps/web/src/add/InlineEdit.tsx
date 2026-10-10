@@ -14,11 +14,22 @@ export function InlineEdit({
   placeholder,
   onCommit,
   onCancel,
+  onPasteText,
 }: {
   initial: string
   placeholder?: string
   onCommit: (title: string) => void
   onCancel: () => void
+  /**
+   * Offered a paste before the textarea takes it. Return the text to insert
+   * instead, or `null` to let the ordinary paste happen untouched.
+   *
+   * Used to preserve a link's name when the clipboard carried one, by
+   * inserting `[name](url)` rather than the bare URL. A bare URL needs no
+   * intervention at all — it belongs in the text as-is, and letting the
+   * browser paste it keeps this field's native undo working.
+   */
+  onPasteText?: (data: DataTransfer) => string | null
 }): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null)
   const committed = useRef(false)
@@ -48,6 +59,19 @@ export function InlineEdit({
       placeholder={placeholder ?? 'New item…'}
       rows={1}
       onInput={(e) => grow(e.currentTarget)}
+      onPaste={(e) => {
+        if (!onPasteText || !e.clipboardData) return
+        const text = onPasteText(e.clipboardData)
+        if (text === null) return
+        e.preventDefault()
+        // setRangeText keeps the caret after what was inserted and leaves any
+        // selection replaced, matching what a real paste would have done.
+        const el = e.currentTarget
+        const start = el.selectionStart ?? el.value.length
+        const end = el.selectionEnd ?? start
+        el.setRangeText(text, start, end, 'end')
+        grow(el)
+      }}
       onBlur={() => finish(true)}
       onKeyDown={(e) => {
         // Enter commits; Shift+Enter is a literal newline, matching quick capture.

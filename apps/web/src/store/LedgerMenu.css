@@ -1,0 +1,113 @@
+/*
+ * Ledger dropdown. Shares the panel/hairline/shadow language of CellMenu and
+ * ProjectColorPicker so it reads as the same family of popover; every colour is
+ * a token, so it repaints correctly in all three themes with no overrides.
+ */
+
+.ws-ledgermenu {
+  position: relative;
+}
+
+/*
+ * `.ws-filepicker` was a <span> and is now a <button>. Its visual rules live in
+ * app.css and are unchanged — these only reset the UA button chrome so it looks
+ * identical to before.
+ */
+.ws-ledgermenu .ws-filepicker {
+  appearance: none;
+  cursor: pointer;
+}
+
+.ws-ledgermenu-pop {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 40;
+  min-width: 230px;
+  max-width: 340px;
+  padding: 5px;
+  background: var(--ws-panel);
+  border: 1px solid var(--ws-hair-strong);
+  border-radius: var(--ws-radius-menu);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.ws-ledgermenu-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px;
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: var(--ws-radius-2);
+  text-align: left;
+  font: 400 11.5px/1.3 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-2);
+  cursor: pointer;
+}
+
+.ws-ledgermenu-item:hover:not(:disabled) {
+  background: var(--ws-subtle);
+  color: var(--ws-ink);
+}
+
+.ws-ledgermenu-item:disabled {
+  color: var(--ws-ink-4);
+  cursor: default;
+}
+
+.ws-ledgermenu-item--active {
+  color: var(--ws-ink);
+  font-weight: 500;
+}
+
+/* Fixed-width gutter so the labels line up whether or not a row has a tick. */
+.ws-ledgermenu-check {
+  width: 10px;
+  flex: none;
+  color: var(--ws-ink-3);
+}
+
+.ws-ledgermenu-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--ws-hair);
+}
+
+.ws-ledgermenu-note,
+.ws-ledgermenu-error {
+  margin: 0;
+  padding: 5px 8px;
+  font: 400 11px/1.4 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-3);
+}
+
+.ws-ledgermenu-error {
+  color: var(--ws-due-fg);
+}
+
+.ws-ledgermenu-new {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+}
+
+.ws-ledgermenu-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 5px;
+  background: var(--ws-surface);
+  border: 1px solid var(--ws-sel-ring);
+  border-radius: var(--ws-radius-2);
+  font: 400 11.5px/1.3 'IBM Plex Mono', monospace;
+  color: var(--ws-ink);
+}
+
+.ws-ledgermenu-ext {
+  font: 400 11.5px/1.3 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-4);
+  flex: none;
+}

@@ -1,0 +1,49 @@
+/*
+ * The inline link icon.
+ *
+ * `vertical-align` and a fixed box keep it from changing the line height of
+ * the row it sits in — rows are `display: contents` in one big grid, so a
+ * taller line here would push every cell in that row down.
+ *
+ * Kind colours are literal hex, the same deliberate exception to token
+ * discipline as `LinkChip.css`: Docs blue / Sheets green / Slides yellow is
+ * semantic, and re-tinting per theme would make each theme mean something
+ * different.
+ */
+.ws-ilink {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  vertical-align: baseline;
+  text-decoration: none;
+  color: var(--ws-ink-2);
+  cursor: pointer;
+}
+
+.ws-ilink-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--ws-link-dot);
+  color: #fff;
+  font: 600 9px/1 'IBM Plex Sans', sans-serif;
+  /* Optical centring against the surrounding text baseline. */
+  transform: translateY(1.5px);
+}
+
+.ws-ilink:hover .ws-ilink-icon { filter: brightness(1.12); }
+.ws-ilink:focus-visible { outline: 2px solid var(--ws-sel-ring); outline-offset: 1px; border-radius: 3px; }
+
+.ws-ilink--gdoc    .ws-ilink-icon { background: #1a73e8; }
+.ws-ilink--gsheet  .ws-ilink-icon { background: #0f9d58; }
+.ws-ilink--gslides .ws-ilink-icon { background: #f4b400; color: #3c2f00; }
+.ws-ilink--gform   .ws-ilink-icon { background: #7248b9; }
+.ws-ilink--gdrive  .ws-ilink-icon { background: #5f6368; }
+
+.ws-ilink-name {
+  border-bottom: 1px solid var(--ws-hair-strong);
+}
+
+.ws-ilink:hover .ws-ilink-name { color: var(--ws-ink); }

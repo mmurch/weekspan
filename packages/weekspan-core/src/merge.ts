@@ -1,4 +1,5 @@
 import type { IsoDate, Item, Weekspan, Link, Mark, Project } from './types.js'
+import { repairDuplicateRanks } from './rank.js'
 
 /**
  * Semantic three-way merge.
@@ -40,6 +41,8 @@ export interface MergeStats {
   itemsRemoved: number
   itemsChanged: number
   marksChanged: number
+  /** Ranks the merge had to separate because both sides minted the same key. */
+  ranksRepaired: number
 }
 
 export interface MergeResult {
@@ -300,13 +303,29 @@ export function merge(base: Weekspan, ours: Weekspan, theirs: Weekspan): MergeRe
     if (!removedByUs && !removedByThem) vacation.add(d)
   }
 
+  // Two devices that append to the same scope from the same base compute the
+  // SAME key. That is fractional indexing working exactly as designed — the
+  // generator is deterministic and carries no per-device entropy — so neither
+  // side can avoid it alone. This is the only place that sees both writes at
+  // once, and therefore the only place the pair can be separated.
+  //
+  // The order handed to the repair must NOT depend on which side is `ours`:
+  // `mergeCollection` enumerates ours-then-theirs, so the two devices see a
+  // colliding pair in opposite orders. Sorting by id first makes both compute
+  // the identical repair and converge. An order-dependent tie-break would have
+  // each device "fix" it the other way and collide again on the next round —
+  // a merge that does not converge is worse than the collision it repairs.
+  const rankRepair = repairDuplicateRanks(
+    [...itemResult.items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+  )
+
   const merged: Weekspan = {
     ...ours,
     version: Math.max(ours.version, theirs.version),
     closedThrough,
     vacationDays: [...vacation].sort(),
     projects: projectResult.items.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
-    items: itemResult.items.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0)),
+    items: rankRepair.items.sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0)),
   }
 
   return {
@@ -317,6 +336,7 @@ export function merge(base: Weekspan, ours: Weekspan, theirs: Weekspan): MergeRe
       itemsRemoved: itemResult.removed,
       itemsChanged: itemResult.changed,
       marksChanged,
+      ranksRepaired: rankRepair.repairs.length,
     },
   }
 }

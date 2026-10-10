@@ -200,9 +200,141 @@ export function minimalMoveRank(
 }
 
 /**
- * Rank for inserting a brand-new item between two neighbours — the hover-seam
- * insert. Nothing else moves.
+ * Rank for inserting a brand-new item between two neighbours — the hover-seam,
+ * quick-capture and CLI insert. Nothing else moves.
+ *
+ * `scope` is the sibling list the new item joins, and it is REQUIRED, because a
+ * missing anchor is a QUESTION, not an answer. `after === null` does not mean
+ * "above everything"; it means the caller did not name an upper bound, and the
+ * real bound is whichever sibling actually follows `before`.
+ *
+ * Reading a null anchor as infinity is what minted duplicate ranks.
+ * `midpoint(a, undefined)` is deterministic, so any two callers appending after
+ * the same key get the same key back. Project view made that reachable: the
+ * seam at the end of a project GROUP passes no upper bound, but a group is not
+ * a rank scope — items from other groups sort above it. Two groups appending at
+ * their own ends therefore walked the same sequence of keys and collided term
+ * for term, producing items that shared a rank. The file still parsed and
+ * rendered; it broke only later, when an insert between the colliding pair
+ * asked `rankBetween` for a key between X and X.
+ *
+ * `minimalMoveRank` has always resolved its neighbours from the scope this way,
+ * which is why dragging never produced a duplicate. Inserts now do the same.
+ *
+ * Resolution is by rank COMPARISON, never by array position, so a caller that
+ * hands over an unsorted scope (or one that still contains a duplicate) gets a
+ * usable answer rather than a surprise.
  */
-export function rankForInsert(before: Item | null, after: Item | null): string {
-  return rankBetween(before?.rank ?? null, after?.rank ?? null)
+export function rankForInsert(
+  before: Item | null,
+  after: Item | null,
+  scope: readonly Item[],
+): string {
+  const sorted = [...scope].sort(byRank)
+
+  let lower = before
+  let upper = after
+
+  if (lower === null && upper === null) {
+    // No anchors at all: append at the true end of the scope. This is the ONE
+    // case where an unbounded `rankBetween(x, null)` is sound, because `x` is
+    // the scope maximum by construction.
+    lower = sorted[sorted.length - 1] ?? null
+  } else if (upper === null) {
+    // Strictly greater, so `lower` itself is skipped — and so is anything
+    // already sharing its rank.
+    upper = sorted.find((i) => i.rank > lower!.rank) ?? null
+  } else if (lower === null) {
+    for (const i of sorted) {
+      if (i.rank >= upper.rank) break
+      lower = i
+    }
+  }
+
+  return rankBetween(lower?.rank ?? null, upper?.rank ?? null)
+}
+
+/** One item's rank rewritten by `repairDuplicateRanks`. */
+export interface RankRepair {
+  id: string
+  from: string
+  to: string
+}
+
+/**
+ * Give every item a rank that sorts strictly after its predecessor's, within
+ * its own sibling scope. Returns the items unchanged (and an empty `repairs`)
+ * when nothing collides, so a caller can use `repairs.length` to decide whether
+ * a write is warranted at all.
+ *
+ * Duplicate ranks are RECOVERABLE, not fatal, which is why this exists instead
+ * of a `parse` rejection. A collision costs you an ordering that was already
+ * ambiguous; refusing to open the file costs you the whole ledger. Rejecting
+ * would also have punished the user for a bug the app itself committed — the
+ * files that need this were written by `rankForInsert`'s old unbounded append,
+ * not by hand.
+ *
+ * The repair keeps the FIRST item of a colliding run where it is and moves the
+ * later ones up into the gap above, so what you see does not jump.
+ *
+ * "First" means first in the order given, and the sort below is relied on to be
+ * STABLE (required of `Array.prototype.sort` since ES2019) so that a colliding
+ * pair keeps it. That is what makes the repair both display-preserving and
+ * reproducible: callers repair a freshly parsed file, `parse` preserves the
+ * order the items appear in on disk, so two devices repairing the same file
+ * independently compute the same ranks and the fix does not become a conflict.
+ * An `id` tie-break would also be reproducible, but it would reorder the two
+ * rows on screen for no reason the user could see.
+ */
+export function repairDuplicateRanks(items: readonly Item[]): {
+  items: Item[]
+  repairs: RankRepair[]
+} {
+  const repairs: RankRepair[] = []
+  const fresh = new Map<string, string>()
+
+  const scopes = new Map<string | null, Item[]>()
+  for (const item of items) {
+    const key = item.parentId ?? null
+    const list = scopes.get(key)
+    if (list) list.push(item)
+    else scopes.set(key, [item])
+  }
+
+  for (const scope of scopes.values()) {
+    const sorted = [...scope].sort(byRank)
+
+    let prev: string | null = null
+    for (let i = 0; i < sorted.length; i++) {
+      const item = sorted[i]!
+      if (prev === null || item.rank > prev) {
+        prev = item.rank
+        continue
+      }
+
+      // The next rank that is genuinely above `prev` — skipping the rest of the
+      // colliding run, which is about to be re-ranked into this same gap.
+      let next: string | null = null
+      for (let j = i + 1; j < sorted.length; j++) {
+        if (sorted[j]!.rank > prev) {
+          next = sorted[j]!.rank
+          break
+        }
+      }
+
+      const rank = rankBetween(prev, next)
+      repairs.push({ id: item.id, from: item.rank, to: rank })
+      fresh.set(item.id, rank)
+      prev = rank
+    }
+  }
+
+  if (repairs.length === 0) return { items: [...items], repairs }
+  return {
+    items: items.map((i) => {
+      const rank = fresh.get(i.id)
+      return rank === undefined ? i : { ...i, rank }
+    }),
+    repairs,
+  }
 }

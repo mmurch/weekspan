@@ -10,7 +10,7 @@
  */
 
 import type { IsoDate, Item, Weekspan } from '@weekspan/weekspan-core'
-import { rankForInsert } from '@weekspan/weekspan-core'
+import { rankForInsert, siblingsOf } from '@weekspan/weekspan-core'
 
 export interface InsertOpts {
   title: string
@@ -100,8 +100,11 @@ export function insertItem(weekspan: Weekspan, opts: InsertOpts): InsertResult {
 
   // rankForInsert(before, after) names its params by sort order: `before` is
   // the neighbour the result sorts after (our `afterId`), `after` is the
-  // neighbour it sorts before (our `beforeId`).
-  const rank = rankForInsert(afterItem, beforeItem)
+  // neighbour it sorts before (our `beforeId`). The scope goes with them: an
+  // anchor the caller left open is resolved against the real siblings, so
+  // "after the last item of this project group" cannot mint a key that some
+  // other group already uses.
+  const rank = rankForInsert(afterItem, beforeItem, siblingsOf(weekspan.items, parentId))
 
   const id = newItemId(weekspan)
   const item: Item = { id, title, rank, marks: {} }

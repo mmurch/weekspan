@@ -54,7 +54,10 @@ describe('closeOutState', () => {
   it('separates a lapsed recurring occurrence into generatedBlockers, leaving explicitBlockers empty', () => {
     const rule: Recurrence = { freq: 'weekly', weekday: 2, anchor: '2026-08-04' } // Tuesdays
     const item = makeItem('recurring', {}, rule) // generates 2026-08-18 in W34
-    const weekspan = createWeekspan({ items: [item] })
+    // closedThrough W33 so W34 is the oldest unclosed week. A ledger with no
+    // explicit mark before this week now starts its window at the CURRENT week,
+    // and W35 is never closeable — which would test the wrong thing entirely.
+    const weekspan = createWeekspan({ items: [item], closedThrough: '2026-W33' })
     const state = closeOutState(weekspan, TODAY)
     expect(state.week).toBe(W34)
     expect(state.closeable).toBe(false)

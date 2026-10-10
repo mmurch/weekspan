@@ -15,7 +15,7 @@ import { parseCapture } from './capture.js'
 const TODAY = '2026-08-26' // Wednesday
 
 describe('quick capture resolves dates identically to the CLI', () => {
-  const due = (word: string): string | undefined => parseCapture(`task ${word}`, [], TODAY).due
+  const due = (word: string): string | undefined => parseCapture(`task ${word}`, TODAY).due
 
   it.each([
     ['thu', '2026-08-27'],
@@ -33,7 +33,7 @@ describe('quick capture resolves dates identically to the CLI', () => {
   })
 
   it('leaves an unparseable word in the title rather than guessing a date', () => {
-    const c = parseCapture('task +3m', [], TODAY)
+    const c = parseCapture('task +3m', TODAY)
     expect(c.due).toBeUndefined()
     expect(c.title).toContain('+3m')
   })

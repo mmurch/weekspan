@@ -101,6 +101,17 @@ describe('a full session', () => {
     await runCellCommand(ctx([id, '2026-08-27']), 'done', capture().out)
     expect(onDisk().items[0]!.marks['2026-08-27']!.kind).toBe('done')
 
+    // Nothing has happened before this week yet, so there is nothing to close
+    // and the window starts at W35 — a brand-new ledger does not open claiming
+    // it is already a week behind.
+    const fresh = capture()
+    await runStatus(ctx([]), fresh.out)
+    expect(fresh.stdout()).toContain('2026-W35')
+    expect(fresh.stdout()).not.toContain('2026-W34')
+
+    // Give the session some history: a chunk of the same item done last week.
+    await runCellCommand(ctx([id, '2026-08-19']), 'done', capture().out)
+
     const status = capture()
     await runStatus(ctx([]), status.out)
     expect(status.stdout()).toContain('2026-W34')

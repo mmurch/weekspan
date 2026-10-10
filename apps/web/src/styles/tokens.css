@@ -156,8 +156,13 @@
     --ws-hair-strong: rgba(255, 255, 255, 0.16);
     --ws-done-bg: oklch(0.42 0.08 158);
     --ws-done-fg: oklch(0.89 0.12 158);
-    --ws-due-bg: oklch(0.45 0.1 76);
-    --ws-due-fg: oklch(0.93 0.1 86);
+    /* Pastel yellow, not mustard. The old value (L .45) sat at almost exactly
+       Solarized's L .42, so the two dark themes were indistinguishable on the
+       one marker you look at most. This mirrors Paper's pastel (L .89) pulled
+       down just enough not to glare against #1c1a17, and flips to dark ink the
+       way Paper does — a light chip carrying dark text. */
+    --ws-due-bg: oklch(0.84 0.11 88);
+    --ws-due-fg: oklch(0.33 0.09 70);
     --ws-today-bg: #e8e2d6;
     --ws-today-fg: #1c1a17;
     --ws-active-bg: #e8e2d6;
@@ -279,8 +284,10 @@
   --ws-hair-strong: rgba(255, 255, 255, 0.16);
   --ws-done-bg: oklch(0.42 0.08 158);
   --ws-done-fg: oklch(0.89 0.12 158);
-  --ws-due-bg: oklch(0.45 0.1 76);
-  --ws-due-fg: oklch(0.93 0.1 86);
+  /* Kept in step with the system-dark block above — "Match system" on a dark
+     OS and an explicit Warm dark must not differ. See the note there. */
+  --ws-due-bg: oklch(0.84 0.11 88);
+  --ws-due-fg: oklch(0.33 0.09 70);
   --ws-today-bg: #e8e2d6;
   --ws-today-fg: #1c1a17;
   --ws-active-bg: #e8e2d6;

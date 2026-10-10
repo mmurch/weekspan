@@ -40,11 +40,34 @@ describe('computeWindow', () => {
     expect(w35!.isPast).toBe(false)
   })
 
-  it('fresh weekspan starts at the week before the current one', () => {
+  it('a genuinely fresh weekspan starts at the CURRENT week, not the one before', () => {
+    // Opening a brand-new file used to put an empty, uncloseable last week on
+    // screen — the app looked behind before anything had been entered. With no
+    // mark anywhere before this week there is nothing there to close.
     const window = computeWindow(weekspanWith(null), TODAY)
 
-    expect(window.from).toBe('2026-W34')
-    expect(oldestUnclosedWeek(weekspanWith(null), TODAY)).toBe('2026-W34')
+    expect(window.from).toBe('2026-W35')
+    expect(oldestUnclosedWeek(weekspanWith(null), TODAY)).toBe('2026-W35')
+    // Still four blocks; they just all start from today rather than yesterday.
+    expect(window.weeks).toHaveLength(4)
+    expect(window.weeks.some((w) => w.isPast)).toBe(false)
+  })
+
+  it('but a mark in a past week pulls the edge back, so it stays closeable', () => {
+    // The display rule is "nothing happened before this week", not "ignore the
+    // past". One mark last week and the window covers it again.
+    const withHistory = {
+      ...weekspanWith(null),
+      items: [{ id: 'a', title: 'a', rank: 'a0', marks: { '2026-08-18': { kind: 'done' as const } } }],
+    }
+    expect(oldestUnclosedWeek(withHistory, TODAY)).toBe('2026-W34')
+  })
+
+  it('is a display rule only — closedThrough is never written', () => {
+    const fresh = weekspanWith(null)
+    oldestUnclosedWeek(fresh, TODAY)
+    computeWindow(fresh, TODAY)
+    expect(fresh.closedThrough).toBeNull()
   })
 
   it('three weeks behind: window grows leftward to cover the whole backlog', () => {

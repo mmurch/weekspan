@@ -61,8 +61,10 @@ export {
   rankBetween,
   rankForInsert,
   rankSequence,
+  repairDuplicateRanks,
   siblingsOf,
 } from './rank.js'
+export type { RankRepair } from './rank.js'
 
 export {
   clearMark,
@@ -77,12 +79,24 @@ export {
   setSkip,
 } from './marks.js'
 
+export type { LinkKind, TitleSegment, UrlClassification } from './links.js'
+export {
+  LINK_KINDS,
+  addLink,
+  classifyUrl,
+  parseTitleLinks,
+  removeLink,
+  setLinkTitle,
+  titlePlainText,
+} from './links.js'
+
 export {
   PROJECT_COLOR_TOKENS,
   addProject,
   assignProject,
   findProjectByName,
   nextProjectColor,
+  projectDeletionImpact,
   removeProject,
   renameProject,
   setProjectColor,
@@ -96,7 +110,7 @@ export {
   validateRecurrence,
 } from './recurrence.js'
 
-export type { DisplayState, RowStyle } from './derived.js'
+export type { DisplayState, RowStyle, VacationDays } from './derived.js'
 export {
   displayState,
   effectiveMark,
@@ -105,6 +119,10 @@ export {
   isGeneratedOccurrence,
   rowStyle,
 } from './derived.js'
+
+export type { RemoveProjectMode } from './projects.js'
+export { sortByDate, sortKeyFor } from './sortByDate.js'
+export { defaultInsertAnchor, defaultInsertBeforeId, itemsRemovedBy, removeItem } from './items.js'
 
 export type { WeekWindow, WindowWeek } from './window.js'
 export {

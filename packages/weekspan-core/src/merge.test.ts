@@ -205,3 +205,77 @@ describe('merge — output shape', () => {
     expect(isUnchanged(base, changed)).toBe(false)
   })
 })
+
+/**
+ * Fractional indexing is deterministic and carries no per-device entropy, so
+ * two devices appending to the same scope from the same base MUST mint the same
+ * key. Neither side can prevent that alone — the merge is the only code that
+ * ever sees both writes.
+ */
+describe('merge — rank collisions between two devices', () => {
+  const seed = weekspan([item('a', { rank: 'V' })])
+
+  /** Both devices append after 'a' and independently compute the same key. */
+  function appendBothSides(): { ours: Weekspan; theirs: Weekspan } {
+    const ours = clone(seed)
+    ours.items.push(item('mine', { rank: 'l' }))
+    const theirs = clone(seed)
+    theirs.items.push(item('yours', { rank: 'l' }))
+    return { ours, theirs }
+  }
+
+  it('keeps both items and separates their ranks', () => {
+    const { ours, theirs } = appendBothSides()
+    const r = merge(seed, ours, theirs)
+
+    expect(r.merged.items.map((i) => i.id).sort()).toEqual(['a', 'mine', 'yours'])
+    const ranks = r.merged.items.map((i) => i.rank)
+    expect(new Set(ranks).size).toBe(ranks.length)
+    expect(r.stats.ranksRepaired).toBe(1)
+  })
+
+  it('converges — both devices compute the same merged ranks', () => {
+    const { ours, theirs } = appendBothSides()
+
+    // Device A merges (base, A, B); device B merges the same three states with
+    // the sides swapped. They must agree, or the next round collides again.
+    const a = merge(seed, clone(ours), clone(theirs)).merged
+    const b = merge(seed, clone(theirs), clone(ours)).merged
+
+    const ranksOf = (w: Weekspan): [string, string][] =>
+      [...w.items].sort((x, y) => (x.id < y.id ? -1 : 1)).map((i) => [i.id, i.rank])
+    expect(ranksOf(a)).toEqual(ranksOf(b))
+  })
+
+  it('settles after one round — re-merging the result repairs nothing', () => {
+    const { ours, theirs } = appendBothSides()
+    const once = merge(seed, ours, theirs).merged
+    const again = merge(once, clone(once), clone(once))
+    expect(again.stats.ranksRepaired).toBe(0)
+    expect(again.merged).toEqual(once)
+  })
+
+  it('leaves ranks alone when nothing collides', () => {
+    const base = weekspan([item('a', { rank: 'V' }), item('b', { rank: 'l' })])
+    const ours = clone(base)
+    ours.items[0]!.title = 'renamed'
+    const r = merge(base, ours, clone(base))
+    expect(r.stats.ranksRepaired).toBe(0)
+    expect(r.merged.items.map((i) => i.rank)).toEqual(['V', 'l'])
+  })
+
+  it('does not touch a shared rank under two different parents', () => {
+    const base = weekspan([
+      item('p1', { rank: 'V' }),
+      item('p2', { rank: 'l' }),
+      item('c1', { rank: 'V', parentId: 'p1' }),
+    ])
+    const ours = clone(base)
+    const theirs = clone(base)
+    theirs.items.push(item('c2', { rank: 'V', parentId: 'p2' }))
+
+    const r = merge(base, ours, theirs)
+    expect(r.stats.ranksRepaired).toBe(0)
+    expect(r.merged.items.find((i) => i.id === 'c2')!.rank).toBe('V')
+  })
+})

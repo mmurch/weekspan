@@ -77,7 +77,77 @@ so any agent pointed at that folder learns the rules without being told.
 - **Skips carry provenance.** `deliberate` is a choice; `auto` is catch-up after an absence.
   Conflating them would destroy the signal the field exists for.
 
+## Moving it to another machine
+
+The web app builds to **one self-contained HTML file**. Nothing to install on the receiving
+machine — no Node, no repo, no server. The repo is a prerequisite for *changing* weekspan, not
+for *using* it.
+
+### The loop
+
+Three steps, and each one prints the next.
+
+**1. Here — build the zip:**
+
+```bash
+npm run release
+```
+
+→ `dist-release/weekspan-2026-08-25-a94c87b.zip` (~108KB). Named for its build stamp.
+
+**2. Slack or email it to yourself.**
+
+**3. There — unzip and run the installer that came with it:**
+
+```bash
+unzip weekspan-*.zip && cd weekspan-*/ && ./install.sh
+```
+
+→ installs to `~/weekspan/`. Open `~/weekspan/weekspan.html` in **Chrome or Edge** (Firefox and
+Safari can't write the ledger — no File System Access API).
+
+That's it. Repeat all three whenever you want to push an update; nothing differs on the second
+run or the fiftieth.
+
+### What makes it safe to repeat
+
+- **Your ledger is never touched.** The installer owns a fixed list of app files and writes
+  only those. `~/weekspan/ledger/` — and anything else you put there — is left alone. There is
+  no `rm -rf` of the destination anywhere in the script, deliberately.
+- **The build stamp is in the app's footer**, bottom right, matching the zip name and
+  `~/weekspan/VERSION`. After an update, glance at it to confirm the new build actually landed —
+  otherwise two builds look identical and you're guessing.
+- **One version back is kept.** If an update breaks something: `./install.sh --rollback`.
+- **The installer ships inside the zip**, so there's nothing to have already installed and
+  nothing to remember on the other machine.
+
+Install somewhere else with `WEEKSPAN_HOME=/some/path ./install.sh`.
+
+### The CLI
+
+The zip includes it. Needs Node 18+; the app itself needs nothing.
+
+```bash
+node ~/weekspan/weekspan-cli.mjs status --weekspan ~/weekspan/ledger/personal.weekspan.json
+```
+
+Set `WEEKSPAN_FILE` in your shell profile to drop the flag. The installer creates a starter
+ledger on first install if Node is available and you don't already have one.
+
+### Developing on the other machine
+
+Only if you want to change the code. Copy the repo over and ask Claude or Cursor to run the
+**`weekspan-setup`** skill (`.claude/skills/weekspan-setup/`) — it checks Node, installs, runs
+the full verify, and builds a release.
+
+### There is no sync
+
+The ledger is a file; two machines editing their own copy will diverge. `weekspan-core` has a
+real three-way merge, but nothing runs it across machines automatically. Keep a separate ledger
+per machine unless you have deliberately set up sync — see
+[docs/google-drive-sync.md](docs/google-drive-sync.md).
+
 ## Status
 
-`weekspan-core` and the CLI are complete and tested. The web app is not built — the grid is the
-main remaining engineering risk (wrapping rows that stay column-aligned across the whole table).
+`weekspan-core`, the CLI and the web app are complete and tested — around 1,000 tests plus two
+Playwright probes that drive the built app in a real browser (`npm run verify`).

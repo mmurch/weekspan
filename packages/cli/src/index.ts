@@ -23,6 +23,7 @@ import { statusCommand } from './commands/status.js'
 import { addCommand, editCommand, moveCommand, rmCommand } from './commands/items.js'
 import { clearCommand, doneCommand, dueCommand, skipCommand } from './commands/cells.js'
 import { closeOutCommand } from './commands/closeout.js'
+import { doctorCommand } from './commands/doctor.js'
 
 const COMMANDS = new Map<string, Command>()
 
@@ -43,6 +44,7 @@ for (const c of [
   skipCommand,
   clearCommand,
   closeOutCommand,
+  doctorCommand,
 ]) {
   register(c)
 }

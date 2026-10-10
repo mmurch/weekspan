@@ -25,6 +25,7 @@ import {
 } from '@weekspan/weekspan-core'
 import { buildGrid } from '../grid/viewModel.js'
 import { nextMarkState } from './cycle.js'
+import { isTypingTarget } from './isTypingTarget.js'
 import { indentItem, outdentItem } from './nesting.js'
 import { moveSelection, type Selection } from './selection.js'
 
@@ -89,19 +90,6 @@ export const KEYMAP: readonly KeyBinding[] = [
   { key: 'tab', shift: true, action: { kind: 'outdent' } },
 ]
 
-/**
- * Duck-typed rather than `instanceof HTMLElement` on purpose: this module has
- * no DOM dependency otherwise, and `applyAction`/`resolveKey` are unit-tested
- * under plain Node (no jsdom in this workspace), where `HTMLElement` does not
- * exist as a global at all.
- */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (target === null || typeof target !== 'object') return false
-  const t = target as { tagName?: unknown; isContentEditable?: unknown }
-  if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') return true
-  if (t.isContentEditable === true) return true
-  return false
-}
 
 /**
  * Maps a raw keyboard event to an `Action`, or `null` if it isn't bound.
@@ -199,6 +187,9 @@ function applyMark(
   weekspan: Weekspan,
 ): ActionResult {
   if (sel === null) return { weekspan: null, selection: null }
+  // The ITEM column carries no date, so there is no cell to mark. Keep the
+  // selection and write nothing rather than guessing a day.
+  if (sel.date === null) return { weekspan: null, selection: sel }
 
   const isVacation = weekspan.vacationDays.includes(sel.date)
   if (isVacation && (kind === 'setDue' || kind === 'setDone')) {
@@ -235,6 +226,10 @@ function applyMark(
 function applyCycle(sel: Selection | null, weekspan: Weekspan, today: IsoDate): ActionResult {
   if (sel === null) return { weekspan: null, selection: null }
   if (!findItem(weekspan, sel.itemId)) return { weekspan: null, selection: null }
+  // On the item column Enter means "edit this title", which is a UI concern the
+  // caller owns (see App's keydown handler). The reducer stays out of it and
+  // writes nothing, so this cannot silently mark a cell instead.
+  if (sel.date === null) return { weekspan: null, selection: sel }
 
   return { weekspan: nextMarkState(weekspan, sel.itemId, sel.date, today), selection: sel }
 }
@@ -278,6 +273,8 @@ function applyReorder(dir: 'up' | 'down', sel: Selection | null, weekspan: Weeks
  */
 function applyNudgeDue(dir: 'left' | 'right', sel: Selection | null, weekspan: Weekspan): ActionResult {
   if (sel === null) return { weekspan: null, selection: null }
+  // Nothing to nudge from the item column — there is no due date there.
+  if (sel.date === null) return { weekspan: null, selection: sel }
   const item = findItem(weekspan, sel.itemId)
   if (!item) return { weekspan: null, selection: null }
 

@@ -4,8 +4,10 @@ import {
   commitNeighbours,
   groupFor,
   isUnchanged,
+  parentIdOf,
   previewIndexFor,
   previewRows,
+  validIndices,
   type RowBox,
 } from './dragPreview.js'
 
@@ -141,5 +143,97 @@ describe('a large list', () => {
     const out = previewRows(big.rows, big.rows[10]!.id, 40)
     expect(out).toHaveLength(big.rows.length)
     expect(new Set(out.map((r) => r.id)).size).toBe(big.rows.length)
+  })
+})
+
+describe('validIndices — the preview may only promise what the commit will honour', () => {
+  const childId = vm.rows.find((r) => r.depth === 1)!.id
+  const rootId = vm.rows.find((r) => r.depth === 0)!.id
+
+  it('finds a child\'s parent by adjacency', () => {
+    const parent = parentIdOf(vm.rows, childId)
+    expect(parent).not.toBeNull()
+    const pi = vm.rows.findIndex((r) => r.id === parent)
+    const ci = vm.rows.findIndex((r) => r.id === childId)
+    expect(vm.rows[pi]!.depth).toBe(0)
+    expect(pi).toBeLessThan(ci)
+  })
+
+  it('a root has no parent', () => {
+    expect(parentIdOf(vm.rows, rootId)).toBeNull()
+  })
+
+  it('confines a child to its own sibling run', () => {
+    const valid = validIndices(vm.rows, childId)
+    const group = new Set(groupFor(vm.rows, childId))
+    const rest = vm.rows.filter((r) => !group.has(r.id))
+    const parentIdx = rest.findIndex((r) => r.id === parentIdOf(vm.rows, childId))
+
+    expect(valid.length).toBeGreaterThan(0)
+    for (const i of valid) {
+      // Never above its parent...
+      expect(i).toBeGreaterThan(parentIdx)
+      // ...and never past the end of that parent's run of children.
+      const rowAfter = rest[i]
+      if (rowAfter) expect(rowAfter.depth === 1 || i === parentIdx + 1).toBe(true)
+    }
+  })
+
+  it('confines a root to slots where a root may begin', () => {
+    const group = new Set(groupFor(vm.rows, rootId))
+    const rest = vm.rows.filter((r) => !group.has(r.id))
+    for (const i of validIndices(vm.rows, rootId)) {
+      if (i < rest.length) expect(rest[i]!.depth).toBe(0)
+    }
+  })
+
+  it('every previewed position resolves to committable neighbours — the regression', () => {
+    // The bug: the preview happily carried a child out of its sibling run, and
+    // commitNeighbours then returned null (or null/null neighbours, which
+    // minimalMoveRank reads as "nothing to fix"), so the drop wrote nothing and
+    // the row snapped back. 100% of nested rows, 0% of roots.
+    for (const row of vm.rows) {
+      for (let i = -3; i <= vm.rows.length + 3; i++) {
+        const previewed = previewRows(vm.rows, row.id, i)
+        expect(previewed).toHaveLength(vm.rows.length)
+        if (isUnchanged(vm.rows, previewed)) continue
+        // A move the preview is willing to SHOW must be one the commit accepts.
+        expect(commitNeighbours(previewed, row.id)).not.toBeNull()
+      }
+    }
+  })
+
+  it('a moved child always keeps a sibling or its parent directly above it', () => {
+    for (let i = -3; i <= vm.rows.length + 3; i++) {
+      const previewed = previewRows(vm.rows, childId, i)
+      const at = previewed.findIndex((r) => r.id === childId)
+      expect(at).toBeGreaterThan(0)
+      const above = previewed[at - 1]!
+      expect(above.depth === 1 || above.id === parentIdOf(vm.rows, childId)).toBe(true)
+    }
+  })
+
+  it('snapping is stable — an index already valid is left alone', () => {
+    for (const i of validIndices(vm.rows, childId)) {
+      const previewed = previewRows(vm.rows, childId, i)
+      const group = new Set(groupFor(vm.rows, childId))
+      const rest = vm.rows.filter((r) => !group.has(r.id))
+      expect(previewed.findIndex((r) => r.id === childId)).toBe(i)
+      expect(rest).toHaveLength(vm.rows.length - 1)
+    }
+  })
+})
+
+describe('validIndices — stress fixture', () => {
+  const svm = buildGrid(stressWeekspan(TODAY), TODAY)
+
+  it('holds the same invariant on a large, deeply populated grid', () => {
+    for (const row of svm.rows.slice(0, 30)) {
+      for (const i of [0, 1, 5, 12, svm.rows.length]) {
+        const previewed = previewRows(svm.rows, row.id, i)
+        if (isUnchanged(svm.rows, previewed)) continue
+        expect(commitNeighbours(previewed, row.id)).not.toBeNull()
+      }
+    }
   })
 })

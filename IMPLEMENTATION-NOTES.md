@@ -135,6 +135,28 @@ Knock-on changes:
   Strikethrough is reserved for completion; conflating "I didn't do this" with "I finished
   this" is the wrong signal on a habit the user is trying to break.
 
+### Vacation days suppress generated occurrences (task #58)
+
+- `effectiveMark` and `isGeneratedOccurrence` take `vacationDays` as a **required** third
+  argument. That was the bug: both took only `(item, date)`, so a recurring rule firing on a
+  vacation day rendered a `due` chip in a hatched cell and blocked close-out. A defaulted
+  `[]` would have let the next caller reintroduce it silently, so the parameter is required
+  and the compiler names every call site.
+- **Suppress, don't shift.** A rule firing on a vacation day renders nothing; the next
+  occurrence still lands on the date the rule names. Shifting it to the next working day
+  would materialize a due on a date the rule never generated — the one thing derived state
+  must not do — and would drag in a tail of edge cases (runs of vacation days, week
+  boundaries, a destination that already has a mark).
+- The complement already existed: `toggleVacation` (web) shifts **explicit** dues forward
+  per the design. Explicit marks are untouched here — they still render on a vacation day
+  and still block close-out. Days get marked vacation after the fact, and hiding a
+  completion the user recorded would destroy history at the render layer.
+- Falls out of this for free: `autoClose` writes **no** auto-skip for a suppressed
+  occurrence, so a fortnight away leaves no trail of skip marks. That is what "the week
+  still closes normally" means in the design.
+- `displayState` deliberately does NOT take `vacationDays`. It only scans explicit marks in
+  the current period — it never synthesizes — so vacation cannot change its answer.
+
 ## `window.ts`
 
 - Week comparisons use `weeksBetween`, not string compare, so the `W52`/`W53` → `W01`
@@ -544,3 +566,748 @@ both call the same function; it exists to fail loudly if someone reintroduces a 
 *Flagged:* the CLI's user-facing error message now comes from core's error text verbatim, so
 changing the wording in core changes the CLI's output. That coupling is the point, but it means
 message-stability assertions exist on both sides of the boundary.
+
+## Project view was inert — three interactions, one missing wire
+
+Reported as three separate bugs (no drag reordering, no dragging into a project, no inline
+create). Two of the three were the same missing wire.
+
+**The drag.** `useDragPreview` was handed Priority view's `vm`, while `handleProjectReorder`
+resolved the drop against `projectVm.rows`. `dropFromRows` was always written to read the
+PREVIEWED rows — "what you see is what commits" — but nothing produced a previewed project
+list, so it got the committed one, found the item exactly where it already was, and resolved
+to its own current group and neighbours. `minimalMoveRank` then correctly returned null and
+`applyProjectDrop` correctly wrote nothing. Every function passed its own tests; the failure
+lived entirely between them.
+
+- `projectDragPreview.ts` is the missing half: the same lift-and-reinsert as `dragPreview.ts`,
+  but over a list that contains dividers. Dividers are load-bearing — a slot immediately after
+  one is what "first item of this group" means, and it is the ONLY landing slot for a group
+  that is currently empty, so they must be in the index space.
+- Identity is positional, not by id. Item ids come from the file and divider keys are project
+  ids; one shared string namespace would be a collision waiting to happen.
+- Indices are in REST space (the list with the dragged group already removed). Both preview
+  functions agree on that, and it is now stated in the doc comment — computing against the
+  full list is off by one whenever the dragged row sits above the target, which is exactly
+  the bug the first version of the test had.
+- The pointer lifecycle (threshold, lift, Escape, commit-on-release) is identical in both
+  views, so `useDragPreview` now takes a `DragAdapter<T, B>` instead of a `GridVM`. `B` — the
+  measured-box shape — stays opaque to the hook, so neither view needs a cast. Both adapters
+  are built every render and both hooks always run; only the active view's ever sees a
+  pointerdown.
+
+**Inline create.** Project view rendered no `<Seam>` and no `<DraftRow>` at all. Adding them
+surfaced a second, pre-existing bug: the draft was keyed by `draftAfterId`, the id of the row
+above it, so the two slots with no row above them — the top of Priority view, and the first
+position in a group — opened a draft that then rendered nowhere. Replaced with `draftSlot`,
+a key of `top` / `after:<id>` / `group:<dividerKey>`, computed by `draftSlotKey` in App and
+matched in Grid.
+
+`EditTarget.new` gained an optional `projectId` so a seam inside a group creates INTO that
+group. Absent means "no opinion" (Priority view, which has no groups); `null` is the real,
+distinct value for the unassigned bucket.
+
+*Flagged:* a project group is NOT a rank scope. `projectSeamParentId` stops its walk at a
+divider, so grouping is never mistaken for nesting.
+
+### `scripts/probe-project-view.mjs` — because unit tests could not have caught this
+
+Every pure function involved was correct and tested. The bug was in the wiring, which only
+exists once the app is assembled, so the probe drives the built single-file app in a real
+browser and asserts on the DOM: a drag files an item into another group, a seam opens a
+draft, the draft commits into the group it was opened in. Reintroducing the original one-line
+bug fails it. Wired into `npm run verify` (`probe:project`).
+
+The probe strips `document.documentElement.style.zoom` before driving anything. CSS `zoom`
+puts layout and visual coordinates in different spaces — documented in App.tsx as harmless
+for real users but fatal for synthetic pointer coordinates, and it is: Playwright reported
+the Priority button intercepting clicks aimed at Project, 30px away.
+
+## View toggle read backwards (`.ws-seg`)
+
+The SELECTED segment carried a solid dark fill — this app's primary-action look, the same as
+`.ws-rail-btn--dark` — so it read as "press me". The unselected one sat at `--ws-ink-3`, the
+muted ink used for disabled metadata, so it read as unavailable. Both signals inverted.
+
+Now a proper segmented control: one recessed track (`.ws-seggroup`), the current view a raised
+pill on it (full ink, weight 600, own surface and hairline), the other plain readable ink with
+a hover fill. The pill says position, never action.
+
+Built from ink, weight and hairline rather than a light/dark fill relationship on purpose:
+`--ws-panel` sits ABOVE `--ws-subtle` in Paper and BELOW it in both dark themes, so a fill
+alone would flip meaning between themes. Weight and ink contrast do not. Verified by
+screenshot in all three. `aria-pressed` carries the state for screen readers, since the pill
+styling says nothing to them.
+
+## Filter now hides non-matches (was: showed them, undimmed)
+
+`filterRows` widened its result to keep a match's parent or children on screen as context,
+tagging them `contextOnly` for the UI to dim. **Nothing ever consumed that flag.** So context
+rows rendered identically to real matches, and typing a term left items on screen that plainly
+did not contain it — with no way to tell which was which. That is the bug; the flag was a
+design that was never finished.
+
+Rather than wire up the dimming, the widening is gone. "Show me what matches" is what the box
+appears to promise, and a filtered list is a lookup tool, not a place to read hierarchy. The
+cost, stated in the code: a matching child whose parent does not match keeps its depth-1
+indent with nothing above it. That reads as a slightly indented row, not a broken tree.
+
+**Project view honoured the filter not at all** — `Grid` ignores `previewRows` in its project
+branch, so the filtered array never reached it. `filterProjectRows` fixes that, and drops a
+group divider when nothing under it survived: an empty group header standing over nothing is
+the same failure as a context row.
+
+Both views read ONE id set (`matchedIds` in App), computed once from the same `RowVM[]`, so a
+term can never show an item in one view and hide it in the other. There is a test for exactly
+that.
+
+## Drag auto-scroll (and the "row detaches from the cursor" symptom)
+
+Two reported symptoms, one root cause each, and they had to be fixed together.
+
+- **Scrolled far too late.** There was no auto-scroll at all; the only scrolling was the
+  browser's own, once the pointer left the window. `autoscroll.ts` starts at 72px from either
+  edge — deliberately generous, because the sticky header rows eat the top ~58px of the scroll
+  box and a tight zone would only trigger once the row was already hidden behind them. Speed
+  ramps linearly from 0 at the zone boundary to 18px/frame at the edge, then holds. Constant
+  speed inside the zone was the obvious alternative and feels much worse: it lurches the
+  instant you enter, with no way to nudge by a row.
+- **Row appeared disjointed from the cursor.** It was never attached — `liftY` was computed on
+  every pointermove and **read by nothing** (now deleted). The row is highlighted in its
+  previewed position, and that position had stopped tracking: `boxes` are viewport rects
+  measured ONCE at pointerdown, so any scroll invalidated all of them by the scroll delta.
+
+  Fixed by adding the delta to the pointer instead of re-measuring, which is the same
+  comparison — `pointerY > box.top - delta + h/2` ⟺ `pointerY + delta > box.top + h/2` — at one
+  subtraction per frame instead of a `querySelector` per row. Verified in a browser: after
+  352px of auto-scrolling, the dragged row sits exactly under the cursor (index gap 0).
+
+Auto-scroll runs off `requestAnimationFrame`, not off pointermove: holding the pointer still
+inside the edge zone must keep scrolling, and a stationary pointer emits no move events. It
+recomputes the preview only when `scrollTop` actually changed, so a container already pinned at
+an end does not re-render the grid every frame.
+
+## Sticky headers were translucent (day/date row)
+
+`--ws-weekend-bg` and `--ws-past-tint` are translucent BY DESIGN — on a cell they are a wash
+laid over the row beneath, which is right, and `.ws-cell--weekend` / `.ws-cell--past` still use
+them raw. But `.ws-day` is `position: sticky`, and setting the tint as the whole background
+replaced the opaque `--ws-subtle` base with a 3%-alpha film. Every row scrolling under the
+header showed straight through it — chips, gridlines and all. `.ws-head-weekendspacer` had the
+same bug.
+
+Fixed by layering the tint over `--ws-subtle` as a gradient
+(`linear-gradient(tint, tint), var(--ws-subtle)`), which keeps the intended colour to the pixel
+while making the result opaque. Done in CSS rather than by inventing per-theme opaque tokens so
+the four themes stay in sync for free. Audited every `position: sticky` rule in `Grid.css`;
+these two were the only translucent ones.
+
+## Distribution — `npm run release` and the `weekspan-setup` skill
+
+The fact that decides the whole question: the web app builds to ONE self-contained HTML file
+that runs from `file://`. **The repo is not a prerequisite for USING weekspan, only for
+changing it.** So the answer to "zip the repo and Slack it to myself" is no — send the 263KB
+HTML file.
+
+`scripts/package-release.mjs` (`npm run release`) stages `dist-release/`. A `.zip` is emitted
+alongside the loose files because corporate mail and Slack filters routinely strip `.html`
+attachments — send whichever gets through.
+
+**A real defect surfaced while verifying the artifact**, which is the argument for testing a
+release rather than assuming it: `init` locates `weekspan.schema.json` and the AGENTS.md /
+CLAUDE.md templates by walking RELATIVE to its own module path. esbuild bundles the CLI to a
+single file, and copying that file out of the workspace put weekspan-core permanently out of
+reach — so `init` on a fresh machine silently produced a bare ledger with a warning and none of
+the three agent-facing files. Fixed by adding a beside-the-executable candidate path in
+`init.ts` and shipping the sidecars in `dist-release/`. Verified by running the packaged CLI
+from `/tmp` against an empty directory: all four files now written, no warning.
+
+Also confirmed the packaged app is genuinely standalone — opened from a bare `/tmp` directory
+with no repo and no `node_modules`, it renders 8 rows and 224 cells with zero console errors.
+It makes exactly one external request, for IBM Plex from `fonts.googleapis.com`; a proxy
+blocking that costs the typeface and nothing else. Noted in the artifact's own README, since a
+work machine is where that matters.
+
+`.claude/skills/weekspan-setup/` is the other half: land the repo, ask Claude or Cursor to run
+it. It leads with "does this person actually need the repo?" — the honest answer is usually no.
+
+## Google Drive as source of truth — `docs/google-drive-sync.md`, NOT implemented
+
+Investigated and deliberately left unbuilt, per explicit instruction to stop if there was no
+obvious low-disruption answer. There isn't.
+
+The finding worth keeping here: **the app does not need to know what Drive is.** `useWeekspan`
+already polls every 2s, and `FileSystemStore.write()` already re-reads and runs the semantic
+three-way `merge()` rather than clobbering. Anything that keeps the local file in step with
+Drive inherits sync, change detection and conflict resolution for free. The question reduces to
+what moves bytes, which is exactly the position ARCHITECTURE.md already takes.
+
+Browser-direct Drive is structurally dead, not merely hard: the app ships as a `file://` page,
+which has a **null origin**, and Google OAuth cannot register a null origin. Hosting the page
+over HTTPS would fix it — and would also make the File System Access API work, which is already
+built and tested, so it buys nothing for real cost.
+
+## Drag reorder reverted on release — 100% of nested rows, not 50% of all rows
+
+Reported as "broken about 50% of the time". A stress probe over both fixtures found the real
+shape: **every drag of a depth-1 child reverted (4/4), every drag of a root committed
+(64/64).** It reads as intermittent because whether it works depends on which row you grabbed,
+not on chance.
+
+`commitNeighbours` only ever accepted SIBLING neighbours, but nothing stopped the PREVIEW from
+carrying a row past them. A child dragged out of its parent's run resolved to
+`before = null, after = null`; `minimalMoveRank` correctly read that as "no constraint left to
+satisfy" and returned null; the write never happened and the row snapped back with no
+explanation.
+
+Fixed by teaching the preview to promise less, not the commit to accept more —
+`dragPreview.ts`'s own principle is that the preview IS the answer, so a position it will not
+commit is a position it must not show. `validIndices` enumerates the legal slots (a child only
+between its own siblings; a root only where a root may begin) and the index snaps to the
+nearest one. The row now visibly refuses an illegal slot instead of following the cursor there
+and silently doing nothing.
+
+The regression test states the invariant directly rather than re-testing the symptom: for every
+row and every index, any previewed order that differs from the current one must yield
+non-null `commitNeighbours`. Post-fix stress: 0 reverts across both fixtures, children 13/13.
+
+*Not a regression from the project-view work* — this predates it. The adapter refactor moved
+the code but not the bug.
+
+## A brand-new weekspan starts at THIS week
+
+`oldestUnclosedWeek` treated `closedThrough: null` as "last week is unclosed", so opening a
+fresh file put an empty, uncloseable past week on screen: the app looked behind before anything
+had been entered.
+
+Now, when `closedThrough` is null AND no explicit mark exists before this week, the left edge
+IS this week. Deliberately narrow:
+
+- **Explicit marks only.** A recurring rule with an old anchor fires through all of history,
+  which would make every new file look like it had a backlog on day one.
+- **A display rule, not a close-out.** `closedThrough` is not written and nothing is archived —
+  which is what "without implementing auto-closeout" required. The moment a mark exists in a
+  past week the edge moves back to include it, which is exactly what happens next week, so the
+  week you just used stays visible and closeable.
+- **Conservative on existing files.** Any file with history behaves as before.
+
+Seven tests across the CLI and web broke, all fixtures that were fresh ledgers standing in for
+"a normal file". Each was given real history rather than having its expectation moved — a
+"closeable past week" with literally nothing in it was a degenerate case worth losing.
+
+## Favicon
+
+`apps/web/favicon.svg` — a calendar with wings (weekspan ~ wingspan). Drawn for 16px first:
+three dots instead of a real calendar face, solid wing silhouettes instead of outlines, short
+binding stubs. A first pass put small wings beside tall rings and read as a beetle at tab size —
+rings as antennae, wings as horns — so the wings moved down to the body's waist and grew.
+
+Colours are literal, not tokens: a favicon is chrome drawn outside the page and cannot see CSS
+custom properties.
+
+**It silently failed to parse at first.** The explanatory comment contained `--ws-active-bg`,
+and a double hyphen is illegal inside an XML comment — the whole file rendered as a broken
+image with no error anywhere except an XML parser message. Token names in that comment are now
+written without their leading dashes, and it says why.
+
+Vite emits an SVG referenced from a `<link>` as a separate asset regardless of
+`assetsInlineLimit`, which would have left the single-file build pointing at an `app.svg` that
+does not travel with it. `build-singlefile.mjs` inlines it as base64 (percent-encoding breaks
+on the `#` colour literals) and now **fails the build on any remaining sibling reference** —
+that class of bug is silent otherwise: a missing icon, an unstyled page, no error.
+
+## Sort-by-date button
+
+`sortByDate` in weekspan-core, button in the ITEM header. Done items first by latest done mark,
+then due items by soonest due mark, then unmarked in existing order. Recurring items are keyed
+from the CURRENT WEEK only — a standing commitment has no meaningful all-time date, and
+generated occurrences run to the horizon in both directions.
+
+Two judgment calls the brief left open, both stated in the source: **ascending in both
+buckets**, and **done keyed by its latest mark while due is keyed by its soonest** ("when did I
+last finish this" and "when must I next act on this" are opposite ends of the same range).
+
+Sorts within rank scopes, so children sort among siblings and nesting survives. Returns null
+when already ordered, so a second press writes nothing.
+
+*Flagged:* unlike a drag, this rewrites every rank in a scope it reorders. Inherent to sorting,
+and the reason it is an explicit button rather than anything automatic.
+
+## The "No project" bucket can be coloured
+
+Its swatch was inert — `DividerRow` rendered a `<span>` for the null bucket and a `<button>` for
+everything else, and `onPickColor` was typed `(projectId: string, …)`, so null had nowhere to go.
+
+**Where the colour lives, and why it is not in the file.** Every real project carries
+`colorToken` in the ledger. The unassigned bucket is the ABSENCE of a project, so there is no
+`Project` record to hang a colour on and the only place a top-level colour could live is a new
+field on `Weekspan`. That was rejected: `parse` calls `rejectUnknownKeys`, so a file carrying a
+field an older client does not know about is REFUSED, not ignored. Adding one therefore means
+bumping `SCHEMA_VERSION` — and `MIGRATIONS.md` is explicit that no migration tooling exists and
+that a bump locks every older copy of the app out of the file. Since the app is distributed by
+copying an HTML file between machines, older copies genuinely exist. Too steep a price for a
+colour.
+
+So it lives per-device in `localStorage`, beside the theme and the zoom level — the two other
+display preferences the file deliberately does not carry. **Stated consequence: the choice does
+not travel with the ledger.** If it should, that needs a schema version and a migration chain,
+which is a different piece of work.
+
+`loadNoProjectColor` validates against the live `PROJECT_COLOR_TOKENS` rather than trusting
+storage: an unknown token would resolve to a CSS custom property that does not exist and paint
+the bar transparent with no clue why. That also happens to close a CSS-injection route through
+a hand-edited storage value.
+
+The picker gained `allowNone`, because colourless is this bucket's default and the user has to
+be able to get back to it. A real project always has a colour, so the option is absent there
+rather than silently doing nothing.
+
+### The picker was never positioned — pre-existing
+
+Found while testing the above, and it affected real projects equally. `App` captured the click's
+`x`/`y` into `colorPicker` state and then never passed them on; `.ws-colorpicker` had no
+`position`, so the "small popover" laid out in normal document flow at the end of the shell,
+`position: static` and stretched to the full viewport height, nowhere near the swatch that
+opened it. Now `position: fixed` with the click coordinates, matching `CellMenu`, plus a clamp
+so it cannot run off the right edge. Its width is computed from the swatch count rather than
+measured — measuring would need a layout pass the first paint does not have.
+
+## Eight changes — notes on the ones with a decision in them
+
+### New items land above the first unmarked row
+
+The brief gave two descriptions — "immediately below the last item with a marker this week" and
+"the first non-marked item" — which agree only when the marked items form an unbroken block.
+`defaultInsertBeforeId` takes the second: a capture lands at the TOP of the unscheduled block,
+as high as it can go without jumping above scheduled work. The first reading would drop it below
+unscheduled items that happen to sit above a late marked one.
+
+**A lone `beforeId` does not mean "immediately before".** The first attempt passed only the
+anchor and the item appeared at the very top of the list anyway: `rankForInsert(null, anchor)`
+has no lower bound, so it produced a rank below every existing root. `defaultInsertAnchor`
+returns BOTH neighbours, which is what pins the item into the one-slot gap. Caught by driving
+the real app, not by a unit test — the unit-level function was correct the whole time.
+
+Both capture paths share it. A single-line capture routes through `commitBulk`, which had its
+own `beforeId = first root` and would otherwise have kept the old behaviour for the common case.
+
+### Mouse: left selects, right cycles, middle does nothing
+
+Two consequences forced by the change rather than chosen:
+
+- **Right click is not gated on `detail`.** Cycling means clicking the same cell repeatedly, and
+  the old `detail >= 2 -> menu` rule would have swallowed the second click of every run — due
+  would be reachable, done would not. The double-click check now applies to the LEFT button only.
+- **The menu moved to left double-click.** The brief named all three buttons and did not mention
+  the menu; dropping it silently would have removed a surface the user never asked to lose, and
+  right click — its conventional home — is now the cycle.
+
+Middle click used to CLEAR the cell: a destructive write on a button people press by accident
+while scrolling.
+
+### Row height no longer moves
+
+Two independent causes, both real: `.ws-title--finished` cut vertical padding from 7px to 4px,
+and `.ws-title-text--finished` shrank the font from 12.5px to 11.5px. Completing an item
+shortened its row by ~7px and shunted the list. Completion now changes INK only.
+
+The editing jitter was a third cause: `12.5px/1.4` is a 17.5px line box, and `InlineEdit` is a
+textarea auto-sized to its integer `scrollHeight`, so swapping text for editor grew the row half
+a pixel. Line-height is now an integer `18px` in both places. Measured after the fix: 33px in
+all three states, list bottom identical to the pixel.
+
+### Reopening the last ledger
+
+A stored handle's permission does NOT survive a browser restart — Chrome downgrades it to
+`prompt`, and `requestPermission` needs a user gesture, so it can never run in a load-time
+effect. `queryPermission` is just a question and needs no gesture, so the restore is honest
+about both cases: granted -> open straight away; anything else -> fall through to the picker,
+whose "Reopen" click IS the gesture. A plain refresh lands back in the grid; a cold start costs
+one click. Restoring blocks the first paint, otherwise the picker flashes for a frame and reads
+as "it forgot".
+
+`LedgerMenu` replaces the inert `<span>` that had a caret and did nothing. Scope is the current
+directory — siblings switch in one click; anything else needs the folder picker, because opening
+a directory requires a gesture and a native dialog either way.
+
+### Blanking a title deletes the item
+
+Reversed from the old behaviour, which was a deliberate guard against
+select-all-and-backspace. Children go with it: `parse` rejects an item whose `parentId` names
+nothing, so orphans would make the file unloadable on the very next read. There is no undo, so
+App names what went rather than letting a row vanish silently.
+
+### The item column is selectable
+
+`Selection.date` is now `IsoDate | null`, with `null` meaning the frozen title cell. Modelled as
+a nullable date rather than a separate variant because every consumer already narrows on
+`sel.date`, so the mark actions refuse it without a new branch each — and the compiler named all
+eleven sites that needed a guard.
+
+Enter on the item column opens the editor. `applyCycle` deliberately REFUSES that case rather
+than marking a cell: which surface Enter opens is a UI concern the caller owns, and the reducer
+staying out of it is what makes "Enter cannot silently mark something" true by construction.
+
+### Warm dark's DUE marker
+
+Was `oklch(0.45 0.1 76)` against Solarized's `oklch(0.42 0.1 82)` — near-identical lightness, so
+the two dark themes were indistinguishable on the one marker you look at most. Now
+`oklch(0.84 0.11 88)` with dark ink: Paper's pastel pulled down just enough not to glare on
+`#1c1a17`. Changed in BOTH the `[data-theme="warm"]` block and the `prefers-color-scheme: dark`
+block, since the latter is warm dark serving as the system-dark default and the two must not
+disagree.
+
+## Deleting a project asks what to do with its items
+
+Two readings of "delete this project", doing opposite things to the user's data: retire the
+CATEGORY and keep the work, or clear out the whole batch. `removeProject` already did the first
+and there was no UI reaching it at all, so this adds the affordance and the choice rather than
+changing a default.
+
+- **`removeProject(weekspan, id, mode)`** — `'unassign'` (the default, unchanged behaviour) or
+  `'deleteItems'`. The default keeps the old call sites and the old tests honest, and it is the
+  safe reading: a project is a long-lived label, and dropping the label rarely means the tasks
+  stopped mattering.
+- **`deleteItems` cascades further than the project.** `parentId` and `projectId` are
+  INDEPENDENT axes, so a doomed item can own a child in some other project. Leaving that child
+  behind dangles its `parentId`, which `parse` rejects — so children of deleted items go too,
+  whatever project they were in. That is the one thing this mode removes that the user did not
+  literally name, and it is forced by the file format rather than chosen. There is a test for
+  exactly that case.
+- **`projectDeletionImpact`** exists so the confirmation can count *before* acting, and counts
+  direct items separately from swept-up children. A dialog that says "3 items" and removes 4 is
+  the kind of mismatch people only notice afterwards; a test asserts the predicted total equals
+  what `deleteItems` actually removes.
+
+UI: a `×` on the group header, hidden until the group is hovered (`visibility`, not `display`,
+so hover never reflows the row). Real projects only — the unassigned bucket is not a thing you
+can delete, it is where things go when they belong to nothing. The dialog focuses the SAFE
+option on open, so a stray Enter keeps the work.
+
+*Flagged:* still no UI to RENAME a project, though `renameProject` exists in core — same gap
+this just closed for deletion.
+
+## Projects are renameable
+
+Click the group name to edit it in place, same idiom as an item title. `renameProject` already
+existed in core; this closes the UI gap flagged when project deletion landed.
+
+**The throw happens in the wrong place for a naive try/catch.** `renameProject` is one of the
+two functions in `projects.ts` that throws rather than returning null — blank name, or a
+duplicate (case-insensitive). That throw fires inside `mutate`'s `apply` callback, so a
+`try { void mutate(...) } catch` around the call never sees it. App validates against the
+current weekspan FIRST, purely to produce the message, then writes; the write's own callback
+keeps a second guard for the narrow window where a poll merged in a conflicting name between
+validating and applying, where no write beats an unhandled throw inside the store.
+
+**Blank cancels; it does not delete.** Deliberately unlike an item title, where blanking now
+deletes. Deleting a project is the thing that just got a two-way confirmation because the
+consequence is ambiguous and unrecoverable — reaching it by accidentally clearing a field would
+undo all of that care.
+
+The editor inherits the header's own 600/12px type rather than `.ws-title-text`'s, so the name
+does not change size or weight the moment you click it. Measured: divider height 29px before
+and during editing — the same "editing must not move anything" rule the row heights follow.
+
+## Undo / redo (Ctrl+Z)
+
+A refactor, not a rewrite — the architecture had already done the hard part by accident.
+`useWeekspan.mutate` is the only mutation path, and `apply` already returns a complete immutable
+`Weekspan`, so the history is literally a list of past values. **No call site changed.** No
+command objects, no inverse operations, no serialisation layer.
+
+`store/history.ts` holds the mechanics as pure functions, out of the hook, for the same reason
+`keymap.ts` and `selection.ts` sit outside their components: the interesting behaviour is a state
+machine, and there is no jsdom in this workspace, so a hook test would need a new dependency to
+say much less.
+
+### Invalidation is the whole feature
+
+Restoring a snapshot is last-writer-wins across the entire file, while every other write path
+merges at item and cell granularity. That asymmetry is why the stack is discarded aggressively:
+
+1. **A merge lands** — from the 2s poll, or a write that returned `merged`. Every snapshot
+   predates that other writer's work, so undoing to one would silently discard it. **This is the
+   one genuine correctness risk in the feature**, and the probe fails without it (verified by
+   removing the call).
+2. **Close-out** is a BARRIER, not a step. It writes `archive/<week>.json`, `FileStore` has no
+   delete at all, and `writeArchive` refuses to overwrite — so a redo past a close would throw.
+   Making it undoable means adding deletion to the store contract, a much bigger change than the
+   rest of this combined. The UI says "Week closed. This cannot be undone." rather than leaving a
+   Ctrl+Z that silently does nothing.
+3. **An error, or a different ledger** — the snapshots describe a state that is not on disk.
+
+Undo goes through the same `write` path as everything else, so it merges rather than clobbers if
+the file moved underneath — and that merge then invalidates the stack, per (1).
+
+### Testing the wiring
+
+`history.test.ts` covers the state machine (branch truncation, cap from the old end, depth
+reporting matching what actually steps). What it cannot cover is WHEN the hook records and
+discards, which is where the risk lives — so `scripts/probe-undo.mjs` drives the built app:
+marks, multi-step, reorder, redo truncation, the close-out barrier, and a genuine second writer.
+
+To simulate that second writer the fixture build exposes its `MemoryStore` on `globalThis`,
+**only** when `?fixture=` was explicitly asked for. A real `FileSystemStore` needs a native
+picker and a user gesture, so there is no other way to get a competing write from a test.
+
+*Out of scope by design:* per-device preferences (theme, zoom, no-project colour) and UI state
+(selection, collapsed groups, view mode). None live in the `Weekspan`, and none should move
+under Ctrl+Z.
+
+### Incidental dedup
+
+`isTypingTarget` existed as two byte-identical private copies, one carrying a comment saying the
+other file was off-limits to edit at the time and that the two must be hand-synced. That
+constraint no longer applied, and Cmd+Z needed a third caller, so it is now one module.
+
+## Quick capture no longer guesses a project
+
+Reported as: "if i use certain phrases, those words get highlighted and it seems to think i am
+creating a project or creating an item under a project… the interaction is super awkward."
+
+`parseCapture` matched every typed word against project names and unique prefixes. A hit was
+highlighted blue, stripped out of the title, and became the new item's `projectId`. The
+mechanism is fine in the abstract and wrong in practice, for three compounding reasons:
+
+- **Ordinary English collides with project names.** With a project called `Work`, "finish deck
+  work" filed itself and lost a word. Prefix matching widened this enormously — any project
+  beginning with "we", "ad", "ki" claims a very common word.
+- **There was no way to opt out.** The title is the only input, so a title that merely *mentions*
+  a project could not be typed at all. You do not fight a picker; you do fight a parser.
+- **Silent and destructive together.** The word vanished from the title *and* a filing decision
+  was made, both without confirmation, both easy to miss until later.
+
+Now the project is an explicit tick: `ProjectPicker` lists every project as a checkbox below the
+input, nothing ticked by default, and nothing typed can move it. The boxes are mutually
+exclusive — ticking one unticks the other — because an item has exactly one `projectId`, so the
+control cannot promise a state the data model will not hold. They are checkboxes rather than
+radios precisely because **"no project" has to be the state you reach by doing nothing**, and a
+radio group has no such state once a choice is made.
+
+**Dates stayed inferred.** A day-word is unambiguous, self-evident from the amber highlight, and
+has no equivalent "I meant that literally" failure — nobody's title needs the bare word `thu`
+preserved the way it needs the word `work`. So `Token` lost its `project` kind and kept `due`,
+and `capture.ts` shed its `projects` argument entirely.
+
+Bulk import follows: `parseBulk` no longer resolves a project per line, and `commitBulk` takes
+one `projectId` applied to every created item — the same single tick, since a batch pasted out
+of a spreadsheet belongs to one project or to none.
+
+This CONFLICTS with the handoff (`design_handoff_todo_ledger/README.md`, "C · Quick capture",
+which specifies `weymouth` tinted blue). The handoff is a design mock that never had a project
+named after a word anyone would type.
+
+`scripts/probe-capture.mjs` drives the built app, because the failure was end-to-end: the parser
+being clean is not the same as the overlay offering the opt-in and the item landing unfiled.
+
+## Marks are draggable — sideways for the day, vertically for priority
+
+Requested as: "Dragging left-right should change the day it is due… dragging vertically should
+change its priority just like the grip in the left. Dragging diagonally should achieve both
+smoothly. I recognized this might be an odd interaction but i keep trying to do it with my mouse."
+
+It is not an odd interaction: it is the grid's own geometry taken literally. Columns already ARE
+days and rows already ARE the priority order, so a chip dragged across columns changing its day
+is the only thing that motion could honestly mean.
+
+**Diagonal is not a third mode.** The two axes are resolved independently from the same pointer
+position every frame — `dateForX` against columns measured at pointerdown, `indexFor` against
+rows measured at the same moment — and then committed together. Building it as three gestures
+(horizontal, vertical, and a diagonal that blends them) would have needed an axis-lock heuristic,
+which is exactly the thing that makes this feel bad in other apps.
+
+`useDragPreview` grew a second entry point rather than a sibling hook. Everything that makes a
+drag feel right is lifecycle — the 4px threshold, auto-scroll at the edges, Escape to cancel,
+"landed back where it started writes nothing" — and a second copy of that would drift. The grip
+passes `from: null` and gets the old vertical-only behaviour; a chip passes its date and gets
+both. Three things did have to change:
+
+- **The threshold is now distance, not `|Δy|`.** A purely sideways chip drag is a real edit, and
+  the old check would have discarded it as an unmoved click.
+- **The release swallows one click.** A pointerup on a chip is still followed by a `click` on the
+  cell beneath, which would select or cycle the mark just dropped. One capture-phase listener
+  eats exactly that click and removes itself — guarded on having actually moved, so a chip that
+  was merely clicked still cycles, as it always has.
+- **Both halves land in ONE `mutate`.** Two calls would be two file writes, two chances to
+  conflict in a synced folder, and — worst — two undo steps, so Cmd+Z would undo half a gesture.
+  The reorder is applied on top of the mark move's result, never against the original weekspan.
+
+`moveMark` refuses a due or a done onto a vacation day, which is the same refusal `applyMark`
+makes for the keyboard and the cell menu; a skip is allowed through in both. A GENERATED
+occurrence is not draggable at all — there is no stored mark to move, and minting one at the
+destination would silently convert a recurrence rule into a hand-placed date. That gate sets the
+grab cursor and the pointer handlers together, so the affordance never promises what the drop
+would refuse.
+
+`autoscroll.ts` grew a second axis, and it was not optional: the four-week window is routinely
+wider than the viewport, so without horizontal auto-scroll the furthest day you could move a mark
+to was whichever one happened to be on screen. Both axes now share one `axisDelta` — same ramp,
+same zone-halving guard. Two details it does NOT share: the left zone starts at the right edge of
+the FROZEN item column (measured from the DOM, not hard-coded), since that column is sticky and
+overlays the true edge of the scroll box, and the zone is 40px rather than 72 because a day is
+only 38px wide and a generous zone would make the outermost visible days impossible to drop on.
+Horizontal scrolling runs only for a mark drag; shoving the grid sideways under a row being
+reordered is motion nobody asked for.
+
+`reorderItem` came out of `App` into `interaction/reorder.ts` so the grip commit and the mark
+commit share one copy of the `minimalMoveRank` no-op rule.
+
+`scripts/probe-mark-drag.mjs` covers what unit tests structurally cannot: that the preview draws
+the chip on the hovered column before release, that a click still cycles, and that one Ctrl+Z
+reverses a whole diagonal gesture.
+
+## Link chips — and why the title cannot be fetched
+
+Asked as: "I want google docs links to become mini previews so that it shows a doc icon and the
+title of the doc if I paste a link. Is that possible with the current hosting/auth approach?"
+
+The icon, yes. The title automatically, no — and the reasons were measured against the real
+network rather than assumed, because the first answer to this question was too quick.
+
+| Attempt | Result |
+|---|---|
+| `fetch` docs.google.com from `file://` | Blocked — origin is `null` |
+| `fetch` from an `https://` page, no credentials | Succeeds, body readable |
+| Same fetch with `credentials: 'include'` | **Fails** — Google sends `ACAO: *`, which CORS forbids with credentials |
+| Drive API `files.get?fields=name`, unauthenticated | 403 `"Method doesn't allow unregistered callers"` |
+| Google Docs oEmbed | Does not exist |
+
+The middle two are the whole story, and they are easy to misread. A cross-origin `fetch` defaults
+to `credentials: 'same-origin'`, so the request that "succeeds" goes out **logged out** — being
+signed into Docs in the same browser is irrelevant, because the fetch is never your session. And
+it cannot be made into your session: `Access-Control-Allow-Origin: *` and credentials are
+mutually exclusive by specification.
+
+The decisive detail is the FAILURE MODE. An anonymous fetch of a doc you cannot see does not
+error; it returns a page whose title is `Page not found`. A scraper would cache that string into
+the ledger, permanently, with no signal that anything went wrong. That is worse than not having
+the feature, and it is why no fetch path is implemented even as a best-effort.
+
+OAuth is the only thing that would work, and only on a hosted or `localhost` origin — a `file://`
+page has a null origin that Google will not let you register, the same wall
+`docs/google-drive-sync.md` hit from the sync side. It was ruled out here on the user's own
+constraints: the single file over `file://` is how this actually gets used, and creating a Google
+Cloud OAuth client is not available. (For the record, that doc's "OAuth is a real project"
+verdict was about full read/write sync — token refresh, writes, conflicts, quota. Read-only
+metadata is much smaller, and if the hosting story ever changes this is worth revisiting.)
+
+### What it does instead
+
+- **Kind from the URL, offline and exact.** Google puts the product in the first path segment of
+  `docs.google.com`, so `/document/` vs `/spreadsheets/` vs `/presentation/` is a read, not a
+  heuristic. That is `classifyUrl`, and it is the half that makes a chip recognisable at a glance.
+- **Title from the clipboard, when the clipboard has one.** A copy carries flavours: `text/plain`
+  is the bare URL, but `text/html` often holds the actual anchor — `<a href="…">Real Title</a>` —
+  which is what you get copying from inside a Doc, from Gmail, from Slack, or from a smart chip.
+  `titleFromClipboardHtml` reads it, matching anchors on the Google document id rather than the
+  raw string, since the two flavours routinely disagree about `/edit` vs `/view` and `?usp=`.
+- **The kind label otherwise.** A chip that says "Google Doc" reads as obviously provisional,
+  which is the honest signal. The raw URL is never used as a title.
+- **Rename is a first-class path, not a repair.** Anything copied from the address bar arrives on
+  a placeholder, so clicking the chip title to rename has to be as ordinary as editing an item
+  title — which is exactly the idiom it borrows.
+
+Two paste gestures, one resolution function so they cannot disagree: onto a **selected row**
+(window-level, refused while typing), and **inside the title editor**, which is the gesture people
+actually reach for — clicking a task's text is how you start editing it, so without that hook
+"click the task, paste the link" typed a 90-character URL into the title.
+
+`urlFromPaste` is deliberately strict: the whole trimmed paste must be one http(s) URL. The
+handler takes the text away and turns it into a chip, so pasting a sentence that merely mentions
+a link must paste the sentence. This is the same lesson as the quick-capture project matcher one
+section up — the cost of a false positive is silent data loss, so the trigger has to be
+unambiguous rather than clever.
+
+`titleFromClipboardHtml` parses with a narrow regex rather than `DOMParser` because this
+workspace has no jsdom, and an untested clipboard parser is precisely the thing that would
+quietly write garbage into the file.
+
+The kind colours in `LinkChip.css` are literal hex rather than theme tokens — the one deliberate
+exception to this app's token discipline. Docs blue / Sheets green / Slides yellow is *semantic*;
+re-tinting per theme would make each theme's chips mean something different.
+
+### Pasting a link while CREATING a todo did nothing — and the probe said it worked
+
+Reported as: "the link chips are not working at all, nothing happens at all when i paste a link in
+with a todo item."
+
+Two separate causes, and it matters that they were separated rather than the first one being
+taken as the whole answer:
+
+1. **The installed app predated the feature.** `~/weekspan` was still build `2026-08-27 4cbe4ff`
+   with zero link-chip code, because `npm run build:single` updates `apps/web/dist-single/` only —
+   neither `dist-release/` (that is `npm run release`) nor `~/weekspan` (that is `./install.sh`).
+2. **The new build had a real gap.** Paste was only wired onto items that already EXIST — a
+   selected row, or an open title editor. Both ways of *creating* a todo ignored it: quick capture
+   (⌘K, `n` and Space all open it — it is the main creation path) and the inline draft row. In
+   quick capture the URL simply became part of the new item's title.
+
+Why it shipped: `probe-links.mjs` dispatched **synthetic** `ClipboardEvent`s at **existing** rows.
+It tested the paths that were built and never the gesture people reach for. It now drives both
+creation paths with a real ⌘V against the browser's own clipboard (select text in a scratch field,
+real ⌘C). A reproduction with real keystrokes was also what separated the two causes above — it
+showed existing-row paste working on the new build while creation paste did not.
+
+Pasted links are held as pending chips and created WITH the item — `InsertOpts.links` — so the
+item and its chips are one write and one undo step, and Esc drops both together. A capture or
+draft that is only a pasted link is named after the link rather than refused. The draft row's
+pending chips are deliberately read-only: clicking anything there blurs the editor, and a blur
+commits the draft, so a × would create the item instead of dropping the link.
+
+## Links moved INTO the item's text, and lost their stand-in label
+
+Asked for: "If a title is not successfully obtained, I don't want the 'Google Doc' or 'Google
+Slides' title at all. It should just be the clickable icon" and "I would like the icon to appear
+in-line in the message wherever the link was in the text."
+
+Both follow from the same fact, which the previous design had backwards. Titles are NOT the normal
+case. The user copies links from the browser address bar and from the Docs share dialog's "Copy
+link" button; both hand over a bare URL, and a Google URL contains no trace of the document's
+name. So "no name" is the resting state, and printing `Google Doc` beside every icon said nothing
+the icon had not already said — a row of three links read as three identical labels.
+
+### Where a link lives
+
+It is now part of the item's text, at the position it was pasted, in one of two forms:
+
+    review https://docs.google.com/document/d/1AbC/edit before lunch
+    review [Tile spec](https://docs.google.com/document/d/1AbC/edit) before lunch
+
+`parseTitleLinks` (weekspan-core) splits that into text and link segments, and `InlineLinks`
+draws each link as an icon in place. Concatenating the segments reproduces the input exactly,
+which is what lets the renderer substitute an icon and leave everything around it untouched.
+
+The alternative — keeping the `Link[]` array and storing an offset — has to hold two things in
+step through every edit of the title, and cannot survive the user retyping the line. Text as the
+single source of truth has one cost, accepted deliberately: editing a title shows the raw URL or
+the raw `[name](url)`. That was the explicit choice when the trade was put to the user, and it
+buys a manual naming path for free — type `[whatever you want](url)` and it renders that way.
+
+The `links` array stays supported for ledgers that already have one, rendered by the old
+`LinkChip` with × so they can be cleared. Nothing writes one any more. A stored title that is
+merely the kind label is treated as no title there too, so old chips also collapse to their icon.
+
+### Paste
+
+Pasting a bare URL is now an ORDINARY paste — the URL belongs in the text, so the browser's own
+insert is already correct, and letting it happen keeps the field's native undo intact. The only
+interception is a clipboard that also carries a name (`markdownForPaste`), which inserts
+`[name](url)`. With a row selected and no editor open there is no caret to paste at, so the link
+is appended to the end of that item's text.
+
+This reverts the pending-chip machinery from the previous round (`InsertOpts.links`,
+`EditTarget.links`, the quick-capture chip tray): once position matters, lifting the URL out of
+the text is exactly the wrong move.
+
+### Two probe bugs worth recording, both mine
+
+The rewritten probe failed twice before the feature was wrong once:
+
+- It asserted a title of `review <link> before friday` and got `review <link> before`. Quick
+  capture had parsed `friday` as the due date and removed it from the title — correct behaviour,
+  wrong test phrase.
+- It faked a titled clipboard by copying a rendered `<a>` element, which puts the anchor's
+  VISIBLE TEXT in `text/plain`. That is a genuinely different gesture (copying words, not a link)
+  and correctly pasted as text. A real "copy link" puts the URL in `text/plain` and the anchor in
+  `text/html`, which the probe now sets explicitly by overriding the copy event.

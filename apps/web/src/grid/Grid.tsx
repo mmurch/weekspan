@@ -3,15 +3,21 @@ import { Fragment } from 'react'
 import type React from 'react'
 import type { IsoDate } from '@weekspan/weekspan-core'
 import { intentForMouse, type MouseIntent } from '../interaction/mouse.js'
+import { isItemSelected } from '../interaction/selection.js'
 import { InlineEdit } from '../add/InlineEdit.js'
 import type { ProjectRow } from './projectView.js'
+import { dividerKey } from '../interaction/projectDragPreview.js'
+import { LinkChip } from '../links/LinkChip.js'
+import { InlineLinks } from '../links/InlineLinks.js'
+import { titlePlainText } from '@weekspan/weekspan-core'
 
 export interface GridInteraction {
   /** Currently selected cell, or null. */
-  selection?: { itemId: string; date: IsoDate } | null
+  /** `date: null` selects the ITEM column — the frozen title cell. */
+  selection?: { itemId: string; date: IsoDate | null } | null
   /**
-   * One callback for every mouse path. Left = due, right = done, middle = clear,
-   * double = menu; `intentForMouse` decides which.
+   * One callback for every mouse path. Left = select, right = cycle,
+   * left-double = menu, middle = nothing; `intentForMouse` decides which.
    */
   onCellMouse?: (
     itemId: string,
@@ -24,6 +30,21 @@ export interface GridInteraction {
   onCloseOut?: (week: string) => void
   /** Pointer handlers for the drag grip, from `useDragPreview`. */
   gripHandlers?: (itemId: string) => { onPointerDown: (e: React.PointerEvent) => void }
+  /**
+   * Pointer handlers for dragging a MARK chip, from `useDragPreview`. A chip
+   * drags on both axes at once: sideways it changes the day, vertically it
+   * reorders the row exactly as the grip does.
+   */
+  markHandlers?: (
+    itemId: string,
+    date: IsoDate,
+  ) => { onPointerDown: (e: React.PointerEvent) => void }
+  /**
+   * The in-flight mark drag. While set, the chip is drawn on `to` (the day
+   * under the pointer) instead of `from` — the same "the preview IS the
+   * answer" rule the row reordering follows.
+   */
+  markDrag?: { itemId: string; from: IsoDate; to: IsoDate } | null
   /**
    * Rows in prospective order while a drag is in progress. When set, these are
    * rendered instead of `vm.rows` — so the row visibly occupies its new position
@@ -41,18 +62,65 @@ export interface GridInteraction {
    * A draft row sits in the gap identified by these neighbours. Rendered as an
    * ordinary row so typing a new item feels exactly like editing an existing one.
    */
-  draftAfterId?: string | null
+  /**
+   * Which seam currently holds the unsaved draft row, as a slot key:
+   * `top`, `after:<itemId>`, or `group:<dividerKey>`. A bare item id could not
+   * name the two slots that have no row above them — the top of Priority view
+   * and the first position in a project group — so both were unreachable: the
+   * seam opened a draft that then rendered nowhere.
+   */
+  draftSlot?: string | null
+  /** Delete a project group. Never offered for the unassigned bucket. */
+  onDeleteProject?: (projectId: string) => void
+  /** Project whose name is currently being edited in its group header. */
+  editingProjectId?: string | null
+  /** Click the group name to rename. Never offered for the unassigned bucket. */
+  onStartRenameProject?: (projectId: string) => void
+  /** Commit a rename. The caller reports a blank or duplicate name; this never validates. */
+  onCommitRenameProject?: (name: string) => void
+  onCancelRenameProject?: () => void
+  /** Clicking the add-item row at the foot of the list. Same path as pressing N. */
+  onAddItem?: () => void
+  /** The sort-by-date button in the ITEM header. Omit it and no button renders. */
+  onSortByDate?: () => void
   /** Clicking the seam between two rows opens a draft there. */
-  onInsertBetween?: (afterId: string | null, beforeId: string | null, parentId: string | null) => void
+  onInsertBetween?: (
+    afterId: string | null,
+    beforeId: string | null,
+    parentId: string | null,
+    /** Project-view seams only: the group the new item should join. */
+    projectId?: string | null,
+  ) => void
   /**
    * Project view: rows interleaved with group dividers. When set, these replace
    * the flat row list. Same grid, same geometry — only the row sequence differs.
    */
   projectRows?: ProjectRow[] | null
   onToggleGroup?: (projectId: string | null) => void
-  onPickColor?: (projectId: string, x: number, y: number) => void
+  /**
+   * Open the colour picker for a group. `null` is the unassigned bucket, which
+   * can be coloured too — its colour is a per-device preference rather than a
+   * field in the ledger (see `projects/noProjectColor.ts`).
+   */
+  onPickColor?: (projectId: string | null, x: number, y: number) => void
   /** Clicking a date header toggles vacation for that day. */
   onToggleVacation?: (date: IsoDate) => void
+  /**
+   * Link chips. `editingLink` names the one being renamed — by (item, url),
+   * since url is the identity `mergeLinks` keys on and the same document can
+   * legitimately be attached to two different items.
+   */
+  editingLink?: { itemId: string; url: string } | null
+  /**
+   * A paste inside any text editor in the grid. Returns replacement text, or
+   * null for an ordinary paste. See `InlineEdit`'s `onPasteText` — this exists
+   * only to keep a link's name when the clipboard carried one.
+   */
+  onPasteText?: (data: DataTransfer) => string | null
+  onStartRenameLink?: (itemId: string, url: string) => void
+  onCommitRenameLink?: (title: string) => void
+  onCancelRenameLink?: () => void
+  onRemoveLink?: (itemId: string, url: string) => void
   /** Notes editing, mirroring title editing. */
   editingNotesId?: string | null
   onStartEditNotes?: (itemId: string) => void
@@ -160,12 +228,50 @@ function WeekHeader({
   )
 }
 
-function Chip({ cell }: { cell: CellVM }): JSX.Element | null {
+const CHIP_LABEL = { done: '✓', due: 'DUE', skip: 'SKIP' } as const
+
+/**
+ * The mark itself.
+ *
+ * A chip backed by an EXPLICIT mark is draggable; one a recurrence rule
+ * generated is not, because there is no stored mark to move and inventing one
+ * at the destination would quietly turn a rule into a hand-placed date (see
+ * `markDrag.ts`). `draggable` therefore gates both the handlers and the grab
+ * cursor together, so the affordance never promises something the drop refuses.
+ */
+function Chip({
+  cell,
+  itemId,
+  handlers,
+  lifted,
+}: {
+  cell: CellVM
+  itemId: string
+  handlers?: GridInteraction['markHandlers'] | undefined
+  /** Drawn at the pointer's column mid-drag. */
+  lifted?: boolean
+}): JSX.Element | null {
   if (cell.kind === null) return null
-  const generated = cell.generated ? ' ws-chip--generated' : ''
-  if (cell.kind === 'done') return <div className={`ws-chip ws-chip--done${generated}`}>✓</div>
-  if (cell.kind === 'due') return <div className={`ws-chip ws-chip--due${generated}`}>DUE</div>
-  return <div className={`ws-chip ws-chip--skip${generated}`}>SKIP</div>
+  const draggable = handlers !== undefined && !cell.generated
+  const cls = [
+    'ws-chip',
+    `ws-chip--${cell.kind}`,
+    cell.generated ? 'ws-chip--generated' : '',
+    draggable ? 'ws-chip--draggable' : '',
+    lifted ? 'ws-chip--lifted' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return (
+    <div
+      className={cls}
+      {...(draggable ? handlers(itemId, cell.date) : {})}
+      {...(draggable ? { title: 'Drag sideways to change the day, up/down to reprioritise' } : {})}
+    >
+      {CHIP_LABEL[cell.kind]}
+    </div>
+  )
 }
 
 function Cell({
@@ -173,6 +279,11 @@ function Cell({
   itemId,
   selected,
   onCellMouse,
+  markHandlers,
+  /** The chip lifted off another column and hovering here. Overrides `cell`'s own. */
+  incomingChip,
+  /** This cell's chip has been lifted away to another column. */
+  chipLifted,
 }: {
   cell: CellVM
   itemId: string
@@ -184,6 +295,9 @@ function Cell({
     x: number,
     y: number,
   ) => void
+  markHandlers?: GridInteraction['markHandlers'] | undefined
+  incomingChip?: CellVM | null
+  chipLifted?: boolean
 }): JSX.Element {
   const cls = [
     'ws-cell',
@@ -229,7 +343,11 @@ function Cell({
         if (intent) onCellMouse?.(itemId, cell.date, intent, e.clientX, e.clientY)
       }}
     >
-      <Chip cell={cell} />
+      {incomingChip ? (
+        <Chip cell={incomingChip} itemId={itemId} lifted />
+      ) : chipLifted ? null : (
+        <Chip cell={cell} itemId={itemId} handlers={markHandlers} />
+      )}
     </div>
   )
 }
@@ -247,6 +365,7 @@ function Row({
     'ws-title',
     row.state === 'finished' ? 'ws-title--finished' : '',
     row.depth === 1 ? 'ws-title--child' : '',
+    isItemSelected(interaction.selection ?? null, row.id) ? 'ws-title--selected' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -262,6 +381,24 @@ function Row({
   const barStyle = row.projectColorToken
     ? { ['--ws-bar-color' as string]: `var(--ws-${kebab(row.projectColorToken)})` }
     : undefined
+
+  /*
+   * Mid mark-drag, the chip is drawn on the column under the pointer rather
+   * than the one it came from. Both are null until the pointer has actually
+   * left the origin column, so a purely vertical chip drag looks like a plain
+   * grip drag — which is exactly what it is.
+   */
+  const md =
+    interaction.markDrag && interaction.markDrag.itemId === row.id && interaction.markDrag.to !== interaction.markDrag.from
+      ? interaction.markDrag
+      : null
+  const liftedFrom = md ? md.from : null
+  // The chip's own appearance travels with it: a done stays a ✓, a generated
+  // occurrence stays hollow. Only its column changes.
+  const draggedChip = md
+    ? (row.cells.find((c) => c.date === md.from) ?? undefined)
+    : undefined
+  const incoming = draggedChip ? { ...draggedChip, date: md!.to } : undefined
 
   return (
     <div className={`ws-row${dragging ? ' ws-row--dragging' : ''}`} data-row-id={row.id}>
@@ -279,14 +416,15 @@ function Row({
             initial={row.title}
             onCommit={(t) => interaction.onCommitEdit?.(t)}
             onCancel={() => interaction.onCancelEdit?.()}
+            {...(interaction.onPasteText ? { onPasteText: interaction.onPasteText } : {})}
           />
         ) : (
           <span
             className={textCls}
             onClick={() => interaction.onStartEdit?.(row.id)}
-            title="Click to edit"
+            title={titlePlainText(row.title) || 'Click to edit'}
           >
-            {row.title}
+            <InlineLinks text={row.title} />
           </span>
         )}
         {interaction.editingNotesId === row.id ? (
@@ -295,6 +433,7 @@ function Row({
             placeholder="Notes — one per line"
             onCommit={(t) => interaction.onCommitNotes?.(t)}
             onCancel={() => interaction.onCancelEdit?.()}
+            {...(interaction.onPasteText ? { onPasteText: interaction.onPasteText } : {})}
           />
         ) : row.notes ? (
           <span className="ws-notes" onClick={() => interaction.onStartEditNotes?.(row.id)}>
@@ -305,18 +444,33 @@ function Row({
               .map((line, i) => (
                 <span key={i}>
                   <span className="ws-note-bullet">·</span>
-                  {line}
+                  <InlineLinks text={line} />
                 </span>
               ))}
           </span>
         ) : null}
+        {/*
+          * LEGACY chips: the `links` array predates links living in the text
+          * itself. Nothing writes one any more (a pasted URL goes into the
+          * title, where `InlineLinks` draws it in place), but a ledger that
+          * already has them must still render them — with × so they can be
+          * cleared once the link has been re-pasted into the text.
+          */}
         {row.links.length > 0 ? (
           <span className="ws-links">
             {row.links.map((link) => (
-              <span className="ws-link" key={link.url}>
-                <span className="ws-link-dot" />
-                {link.title}
-              </span>
+              <LinkChip
+                key={link.url}
+                link={link}
+                editing={
+                  interaction.editingLink?.itemId === row.id &&
+                  interaction.editingLink?.url === link.url
+                }
+                onStartRename={() => interaction.onStartRenameLink?.(row.id, link.url)}
+                onCommitRename={(t) => interaction.onCommitRenameLink?.(t)}
+                onCancelRename={() => interaction.onCancelRenameLink?.()}
+                onRemove={() => interaction.onRemoveLink?.(row.id, link.url)}
+              />
             ))}
           </span>
         ) : null}
@@ -329,6 +483,9 @@ function Row({
             interaction.selection?.itemId === row.id && interaction.selection?.date === cell.date
           }
           {...(interaction.onCellMouse ? { onCellMouse: interaction.onCellMouse } : {})}
+          {...(interaction.markHandlers ? { markHandlers: interaction.markHandlers } : {})}
+          chipLifted={liftedFrom === cell.date}
+          incomingChip={incoming && incoming.date === cell.date ? incoming : null}
           key={cell.date}
         />
       ))}
@@ -355,6 +512,37 @@ function seamParentId(rows: readonly RowVM[], i: number): string | null {
 }
 
 /**
+ * The project group row `i` sits in — the nearest divider above it. This is the
+ * same rule `dropFromRows` uses to resolve a drop, so a seam offers exactly the
+ * group a drop into that gap would land in.
+ */
+function groupAt(rows: readonly ProjectRow[], i: number): string | null {
+  for (let j = i; j >= 0; j--) {
+    const r = rows[j]!
+    if (r.kind === 'divider') return r.projectId
+  }
+  return null
+}
+
+/**
+ * `seamParentId` for the project list. Rank scopes are sibling scopes, NOT
+ * project groups: a child's rank still compares only against its siblings, so
+ * grouping must not be mistaken for nesting. The walk stops at a divider —
+ * a root above a group header is in a different group and cannot be the parent
+ * of anything below it.
+ */
+function projectSeamParentId(rows: readonly ProjectRow[], i: number): string | null {
+  const next = rows[i + 1]
+  if (!next || next.kind !== 'item' || next.row.depth === 0) return null
+  for (let j = i; j >= 0; j--) {
+    const r = rows[j]!
+    if (r.kind === 'divider') return null
+    if (r.row.depth === 0) return r.row.id
+  }
+  return null
+}
+
+/**
  * The hover seam between two rows. An overlay, never a layout change — the gap
  * must not resize on hover or the whole grid twitches as the pointer moves.
  */
@@ -362,18 +550,21 @@ function Seam({
   afterId,
   beforeId,
   parentId,
+  projectId,
   interaction,
 }: {
   afterId: string | null
   beforeId: string | null
   parentId: string | null
+  /** Set by Project-view seams; absent in Priority view, which has no groups. */
+  projectId?: string | null
   interaction: GridInteraction
 }): JSX.Element | null {
   if (!interaction.onInsertBetween) return null
   return (
     <div
       className="ws-seam"
-      onClick={() => interaction.onInsertBetween?.(afterId, beforeId, parentId)}
+      onClick={() => interaction.onInsertBetween?.(afterId, beforeId, parentId, projectId)}
       title="Insert an item here"
     >
       <span className="ws-seam-plus">+</span>
@@ -394,7 +585,7 @@ function DividerRow({
   interaction: GridInteraction
 }): JSX.Element {
   return (
-    <div className="ws-divider">
+    <div className="ws-divider" data-divider-key={dividerKey(divider.projectId)}>
       <button
         className="ws-divider-disclosure"
         type="button"
@@ -404,25 +595,57 @@ function DividerRow({
       >
         {divider.collapsed ? '▸' : '▾'}
       </button>
-      {divider.projectId !== null ? (
-        <button
-          className="ws-divider-swatch"
-          type="button"
-          style={
-            divider.colorToken
-              ? { background: `var(--ws-${kebab(divider.colorToken)})` }
-              : undefined
-          }
-          title="Change colour"
-          onClick={(e) =>
-            interaction.onPickColor?.(divider.projectId as string, e.clientX, e.clientY)
-          }
-        />
+      {/* The unassigned bucket gets the same affordance as a real project.
+          Its colour just lives per-device rather than in the file. */}
+      <button
+        className={`ws-divider-swatch${divider.colorToken ? '' : ' ws-divider-swatch--none'}`}
+        type="button"
+        style={
+          divider.colorToken ? { background: `var(--ws-${kebab(divider.colorToken)})` } : undefined
+        }
+        title="Change colour"
+        aria-label={`Change colour for ${divider.name}`}
+        onClick={(e) => interaction.onPickColor?.(divider.projectId, e.clientX, e.clientY)}
+      />
+      {divider.projectId !== null && interaction.editingProjectId === divider.projectId ? (
+        <span className="ws-divider-name ws-divider-name--editing">
+          <InlineEdit
+            initial={divider.name}
+            placeholder="Project name…"
+            onCommit={(t) => interaction.onCommitRenameProject?.(t)}
+            onCancel={() => interaction.onCancelRenameProject?.()}
+          />
+        </span>
       ) : (
-        <span className="ws-divider-swatch ws-divider-swatch--none" />
+        <span
+          className={`ws-divider-name${divider.projectId !== null ? ' ws-divider-name--editable' : ''}`}
+          {...(divider.projectId !== null && interaction.onStartRenameProject
+            ? {
+                onClick: () => interaction.onStartRenameProject?.(divider.projectId as string),
+                title: 'Click to rename',
+              }
+            : {})}
+        >
+          {divider.name}
+        </span>
       )}
-      <span className="ws-divider-name">{divider.name}</span>
       <span className="ws-divider-meta">{divider.meta}</span>
+      {/* Real projects only — the unassigned bucket is not a thing you can
+          delete, it is where things go when they belong to nothing.
+          Hover-revealed on purpose: retiring a project is rare, and a
+          permanently visible × beside every group is an accident waiting for a
+          stray click. */}
+      {divider.projectId !== null && interaction.onDeleteProject ? (
+        <button
+          className="ws-divider-delete"
+          type="button"
+          title={`Delete project ${divider.name}`}
+          aria-label={`Delete project ${divider.name}`}
+          onClick={() => interaction.onDeleteProject?.(divider.projectId as string)}
+        >
+          ×
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -444,6 +667,7 @@ function DraftRow({
           initial=""
           onCommit={(t) => interaction.onCommitEdit?.(t)}
           onCancel={() => interaction.onCancelEdit?.()}
+          {...(interaction.onPasteText ? { onPasteText: interaction.onPasteText } : {})}
         />
       </div>
     </div>
@@ -460,7 +684,33 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
 
   return (
     <div className="ws-grid" style={style}>
-      <div className="ws-head-item">ITEM</div>
+      <div className="ws-head-item">
+        <span>ITEM</span>
+        {interaction.onSortByDate ? (
+          <button
+            className="ws-head-sort"
+            type="button"
+            onClick={() => interaction.onSortByDate?.()}
+            title="Sort by date — done, then due, then unscheduled"
+            aria-label="Sort by date"
+          >
+            {/* Two arrows chasing each other round a circle. Drawn as two arcs
+                with their own arrowheads rather than a font glyph, which would
+                not be available offline in the single-file build. */}
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path
+                d="M2.6 6.4a5.6 5.6 0 0 1 9.5-2.2M13.4 9.6a5.6 5.6 0 0 1-9.5 2.2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+              <path d="M12.6 1.2v3.2h-3.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M3.4 14.8v-3.2h3.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
       {vm.weeks.map((week) => (
         <WeekHeader
           week={week}
@@ -482,35 +732,81 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
       )}
 
       {interaction.projectRows
-        ? interaction.projectRows.map((pr, i) =>
-            pr.kind === 'divider' ? (
-              <DividerRow divider={pr} interaction={interaction} key={`d-${pr.projectId ?? 'none'}`} />
-            ) : (
-              <Row
-                row={pr.row}
-                interaction={interaction}
-                dragging={interaction.draggingId === pr.row.id}
-                key={pr.row.id}
-              />
-            ),
-          )
+        ? interaction.projectRows.map((pr, i) => {
+            if (pr.kind === 'divider') {
+              const first = interaction.projectRows![i + 1]
+              return (
+                <Fragment key={`d-${pr.projectId ?? 'none'}`}>
+                  <DividerRow divider={pr} interaction={interaction} />
+                  {/* A seam directly under the header is the only way to create
+                      the FIRST item of a group — and the only way to put
+                      anything into a group that is currently empty. */}
+                  {pr.collapsed ? null : (
+                    <Seam
+                      afterId={null}
+                      beforeId={first && first.kind === 'item' ? first.row.id : null}
+                      parentId={null}
+                      projectId={pr.projectId}
+                      interaction={interaction}
+                    />
+                  )}
+                  {interaction.draftSlot === `group:${dividerKey(pr.projectId)}` ? (
+                    <DraftRow interaction={interaction} depth={0} />
+                  ) : null}
+                </Fragment>
+              )
+            }
+            // The group this row sits in, and whether it is the last row of it.
+            // Both come from scanning the rendered list, so a seam always offers
+            // the group the user can see above it.
+            const group = groupAt(interaction.projectRows!, i)
+            const next = interaction.projectRows![i + 1]
+            const lastOfGroup = !next || next.kind === 'divider'
+            return (
+              <Fragment key={pr.row.id}>
+                <Row
+                  row={pr.row}
+                  interaction={interaction}
+                  dragging={interaction.draggingId === pr.row.id}
+                />
+                {interaction.draftSlot === `after:${pr.row.id}` ? (
+                  <DraftRow interaction={interaction} depth={pr.row.depth} />
+                ) : null}
+                <Seam
+                  afterId={pr.row.id}
+                  // At the foot of a group there is no next row to name, and
+                  // `null` means exactly that — "no upper bound named", NOT
+                  // "above everything". `rankForInsert` resolves the real bound
+                  // from the rank scope. Reading it as infinity is what let two
+                  // groups mint the same key: a group is not a rank scope, so
+                  // its last item is not the spine's last item.
+                  beforeId={lastOfGroup ? null : (next.kind === 'item' ? next.row.id : null)}
+                  // Rank scope is sibling-scoped exactly as in Priority view;
+                  // a project group is not a rank scope.
+                  parentId={projectSeamParentId(interaction.projectRows!, i)}
+                  projectId={group}
+                  interaction={interaction}
+                />
+              </Fragment>
+            )
+          })
         : null}
       {interaction.projectRows ? null : (interaction.previewRows ?? vm.rows).map((row, i, arr) => (
         <Fragment key={row.id}>
           {i === 0 ? (
-            <Seam
-              afterId={null}
-              beforeId={row.id}
-              parentId={null}
-              interaction={interaction}
-            />
+            <Fragment>
+              <Seam afterId={null} beforeId={row.id} parentId={null} interaction={interaction} />
+              {interaction.draftSlot === 'top' ? (
+                <DraftRow interaction={interaction} depth={0} />
+              ) : null}
+            </Fragment>
           ) : null}
           <Row
             row={row}
             interaction={interaction}
             dragging={interaction.draggingId === row.id}
           />
-          {interaction.draftAfterId === row.id ? (
+          {interaction.draftSlot === `after:${row.id}` ? (
             <DraftRow interaction={interaction} depth={row.depth} />
           ) : null}
           <Seam
@@ -525,11 +821,13 @@ export function Grid({ vm, ...interaction }: { vm: GridVM } & GridInteraction): 
         </Fragment>
       ))}
 
-      <div className="ws-addrow">
+      {/* A button, not a caption. It advertised a keyboard shortcut and then
+          ignored the obvious click — the one interaction its own "+" invites. */}
+      <button className="ws-addrow" type="button" onClick={() => interaction.onAddItem?.()}>
         <span className="ws-addrow-plus">+</span>
         <span>add item</span>
         <span className="ws-addrow-kbd">N</span>
-      </div>
+      </button>
 
     </div>
   )

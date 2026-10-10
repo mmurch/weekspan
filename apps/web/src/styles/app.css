@@ -93,19 +93,63 @@ textarea {
 
 .ws-caret { font-size: 9px; color: var(--ws-ink-3); }
 
-.ws-seg {
-  padding: 3px 9px;
+/*
+ * View toggle — a segmented control, not two buttons.
+ *
+ * The earlier styling inverted the two signals it needed to send: the SELECTED
+ * segment carried a solid dark fill, which is this app's primary-action look
+ * (see .ws-rail-btn--dark), so it read as "press me"; the unselected one sat at
+ * --ws-ink-3, the same muted ink used for disabled metadata, so it read as
+ * unavailable. Exactly backwards — the one you could act on looked dead and the
+ * one you were already on looked like the call to action.
+ *
+ * Now both segments share one recessed track and the current one is a raised
+ * pill on it: full-strength ink, heavier weight, its own surface and hairline.
+ * The unselected segment keeps readable ink and answers the pointer with a
+ * hover fill, so it plainly invites a click. The pill reads as position
+ * ("you are here"), never as an action.
+ *
+ * Deliberately built from ink, weight and hairline rather than a light/dark
+ * fill relationship: --ws-panel sits ABOVE --ws-subtle in the Paper theme and
+ * BELOW it in both dark themes, so a fill alone would flip meaning between
+ * themes. Weight and ink contrast do not.
+ */
+.ws-seggroup {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
   border: 1px solid var(--ws-hair-strong);
-  border-radius: var(--ws-radius-2);
-  font: 400 11px/1.3 'IBM Plex Sans', sans-serif;
-  color: var(--ws-ink-3);
+  border-radius: var(--ws-radius-btn);
+  background: var(--ws-subtle);
 }
 
-.ws-seg--active {
-  background: var(--ws-active-bg);
-  color: var(--ws-active-fg);
-  border-color: transparent;
-  font-weight: 500;
+.ws-seg {
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-2);
+  background: transparent;
+  font: 400 11px/1.3 'IBM Plex Sans', sans-serif;
+  color: var(--ws-ink-2);
+  cursor: pointer;
+}
+
+.ws-seg:hover {
+  background: var(--ws-hair);
+  color: var(--ws-ink);
+}
+
+.ws-seg:focus-visible {
+  outline: 2px solid var(--ws-sel-ring);
+  outline-offset: 1px;
+}
+
+.ws-seg--active,
+.ws-seg--active:hover {
+  background: var(--ws-panel);
+  border-color: var(--ws-hair-strong);
+  color: var(--ws-ink);
+  font-weight: 600;
+  cursor: default;
 }
 
 .ws-filter {
@@ -204,6 +248,16 @@ body {
 
 .ws-topbar { flex: none; }
 .ws-foot { flex: none; }
+
+/* A shortcut that is real but currently has nothing to act on. */
+.ws-foot-dim { opacity: 0.45; }
+
+/* Present but recessive: you look for it when updating, never otherwise. */
+.ws-foot-build {
+  font: 400 9.5px/1 'IBM Plex Mono', monospace;
+  color: var(--ws-ink-4);
+  margin-left: 10px;
+}
 
 /* ---- zoom picker ----------------------------------------------------- */
 

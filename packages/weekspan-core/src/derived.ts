@@ -39,18 +39,38 @@ export function isFinished(item: Item): boolean {
 }
 
 /**
+ * Days the user has marked vacation — pass `Weekspan.vacationDays` straight
+ * through. Required rather than optional at every call site that can
+ * synthesize an occurrence: forgetting it is precisely the bug this
+ * parameter exists to prevent, and a defaulted `[]` would let a new caller
+ * reintroduce it silently.
+ */
+export type VacationDays = readonly IsoDate[]
+
+/**
  * The mark that should render in this item's cell at `date`.
  *
  * An explicit mark always wins — that's how a completion or skip records an
  * exception to the rule. Absent an explicit mark, a recurring item whose
  * rule generates an occurrence on `date` renders a synthesized `{ kind:
  * 'due' }`. Otherwise there's nothing to show.
+ *
+ * A vacation day suppresses SYNTHESIZED occurrences only. The rule keeps
+ * firing on its own schedule — the next occurrence lands on the date the
+ * rule names, not on the next working day — so nothing is written to the
+ * file and toggling the day back restores the cell exactly. Shifting the
+ * occurrence forward instead would materialize a due on a date the rule
+ * never named, which is the one thing derived state must not do.
+ *
+ * An EXPLICIT mark on a vacation day still renders. Days get marked vacation
+ * after the fact, and hiding a completion or a skip the user already
+ * recorded would be destroying history at the render layer.
  */
-export function effectiveMark(item: Item, date: IsoDate): Mark | undefined {
+export function effectiveMark(item: Item, date: IsoDate, vacationDays: VacationDays): Mark | undefined {
   const explicit = getMark(item, date)
   if (explicit) return explicit
 
-  if (item.recurrence && occursOn(item.recurrence, date)) {
+  if (item.recurrence && !vacationDays.includes(date) && occursOn(item.recurrence, date)) {
     return { kind: 'due' }
   }
 
@@ -63,9 +83,16 @@ export function effectiveMark(item: Item, date: IsoDate): Mark | undefined {
  * occurrence rather than something stored on the item. Close-out needs to
  * tell these apart: a generated occurrence auto-resolves during catch-up,
  * an explicit due does not.
+ *
+ * Kept in lockstep with `effectiveMark`: a vacation day yields no
+ * synthesized occurrence, so there is nothing for close-out to block on and
+ * nothing for `autoClose` to auto-skip. That is what lets a vacation week
+ * "close normally" without writing a skip mark for every recurring item the
+ * user was never expected to do.
  */
-export function isGeneratedOccurrence(item: Item, date: IsoDate): boolean {
+export function isGeneratedOccurrence(item: Item, date: IsoDate, vacationDays: VacationDays): boolean {
   if (getMark(item, date)) return false
+  if (vacationDays.includes(date)) return false
   return item.recurrence !== undefined && item.recurrence !== null && occursOn(item.recurrence, date)
 }
 

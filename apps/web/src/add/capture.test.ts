@@ -1,26 +1,19 @@
-import type { IsoDate, Project } from '@weekspan/weekspan-core'
+import type { IsoDate } from '@weekspan/weekspan-core'
 import { parseCapture } from './capture.js'
 
 const today: IsoDate = '2026-08-26' // Wednesday
 
-const projects: Project[] = [
-  { id: 'proj-weymouth', name: 'Weymouth ground floor', colorToken: 'barA' },
-  { id: 'proj-work', name: 'Work', colorToken: 'barB' },
-  { id: 'proj-weekend', name: 'Weekend trip', colorToken: 'barC' },
-]
-
 describe('parseCapture', () => {
-  it('resolves the design example: title, due day-word, and project prefix', () => {
-    const c = parseCapture('order tile samples thu weymouth', projects, today)
+  it('resolves the design example: title plus due day-word', () => {
+    const c = parseCapture('order tile samples thu', today)
 
     expect(c.title).toBe('order tile samples')
     expect(c.due).toBe('2026-08-27') // next Thursday on/after 2026-08-26
-    expect(c.projectId).toBe('proj-weymouth')
   })
 
-  it('tokenizes thu as due and weymouth as project, spans lining up with the input', () => {
-    const input = 'order tile samples thu weymouth'
-    const c = parseCapture(input, projects, today)
+  it('tokenizes thu as due, spans lining up with the input', () => {
+    const input = 'order tile samples thu'
+    const c = parseCapture(input, today)
 
     for (const t of c.tokens) {
       expect(input.slice(t.start, t.end)).toBe(t.value)
@@ -29,55 +22,55 @@ describe('parseCapture', () => {
     const due = c.tokens.find((t) => t.kind === 'due')!
     expect(due.value).toBe('thu')
     expect(input.slice(due.start, due.end)).toBe('thu')
-
-    const project = c.tokens.find((t) => t.kind === 'project')!
-    expect(project.value).toBe('weymouth')
-    expect(input.slice(project.start, project.end)).toBe('weymouth')
   })
 
   it('resolves "wed" to TODAY on a Wednesday (inclusive), not next week', () => {
-    const c = parseCapture('stand-up notes wed', projects, today)
+    const c = parseCapture('stand-up notes wed', today)
     expect(c.due).toBe(today)
   })
 
   it('resolves "today" and "tomorrow"', () => {
-    expect(parseCapture('call the plumber today', projects, today).due).toBe('2026-08-26')
-    expect(parseCapture('call the plumber tomorrow', projects, today).due).toBe('2026-08-27')
+    expect(parseCapture('call the plumber today', today).due).toBe('2026-08-26')
+    expect(parseCapture('call the plumber tomorrow', today).due).toBe('2026-08-27')
   })
 
   it('resolves a relative offset like +3d', () => {
-    const c = parseCapture('renew library book +3d', projects, today)
+    const c = parseCapture('renew library book +3d', today)
     expect(c.due).toBe('2026-08-29')
   })
 
   it('resolves a relative week offset like -1w', () => {
-    const c = parseCapture('follow up -1w', projects, today)
+    const c = parseCapture('follow up -1w', today)
     expect(c.due).toBe('2026-08-19')
   })
 
-  it('matches a project by exact name, case-insensitively', () => {
-    const c = parseCapture('finish deck WORK', projects, today)
-    expect(c.projectId).toBe('proj-work')
-    expect(c.title).toBe('finish deck')
-  })
-
-  it('matches a project by a unique case-insensitive prefix', () => {
-    const c = parseCapture('order samples Weymo', projects, today)
-    expect(c.projectId).toBe('proj-weymouth')
-    expect(c.title).toBe('order samples')
-  })
-
-  it('does not match an ambiguous prefix, leaving the word in the title', () => {
-    // "we" is a prefix of BOTH "Weymouth ground floor" and "Weekend trip".
-    const c = parseCapture('plan the we trip', projects, today)
+  /*
+   * The project is an explicit tick in the overlay, never a guess about the
+   * text. These four cases are the ones the old name/prefix matcher got
+   * visibly wrong: a word that happens to name a project was silently eaten
+   * out of the title and the item filed itself somewhere nobody asked for.
+   */
+  it('never infers a project, even from a word that exactly names one', () => {
+    const c = parseCapture('finish deck Work', today)
     expect(c.projectId).toBeUndefined()
-    expect(c.title).toBe('plan the we trip')
-    const weToken = c.tokens.find((t) => t.value === 'we')!
-    expect(weToken.kind).toBe('text')
+    expect(c.title).toBe('finish deck Work')
+  })
+
+  it('keeps a project-prefix word in the title verbatim', () => {
+    const c = parseCapture('order samples Weymo', today)
+    expect(c.projectId).toBeUndefined()
+    expect(c.title).toBe('order samples Weymo')
+  })
+
+  it('emits no project tokens at all, so nothing but a day-word highlights', () => {
+    const input = 'order tile samples thu weymouth'
+    const c = parseCapture(input, today)
+    expect(c.tokens.filter((t) => t.kind !== 'text').map((t) => t.value)).toEqual(['thu'])
+    expect(c.title).toBe('order tile samples weymouth')
   })
 
   it('only the LAST due token wins when several appear', () => {
-    const c = parseCapture('reschedule mon then actually fri', projects, today)
+    const c = parseCapture('reschedule mon then actually fri', today)
     // mon -> 2026-08-31 (next Monday), fri -> 2026-08-28 (next Friday); fri appears last.
     expect(c.due).toBe('2026-08-28')
     // Both are still tokenized as due for highlighting purposes.
@@ -86,7 +79,7 @@ describe('parseCapture', () => {
   })
 
   it('yields a plain title with no tokens beyond text when nothing resolves', () => {
-    const c = parseCapture('buy milk and eggs', projects, today)
+    const c = parseCapture('buy milk and eggs', today)
     expect(c.title).toBe('buy milk and eggs')
     expect(c.due).toBeUndefined()
     expect(c.projectId).toBeUndefined()
@@ -94,7 +87,7 @@ describe('parseCapture', () => {
   })
 
   it('handles an empty input', () => {
-    const c = parseCapture('', projects, today)
+    const c = parseCapture('', today)
     expect(c.title).toBe('')
     expect(c.tokens).toEqual([])
     expect(c.due).toBeUndefined()
@@ -102,17 +95,16 @@ describe('parseCapture', () => {
   })
 
   it('accepts an explicit ISO date as a due token', () => {
-    const c = parseCapture('pay invoice 2026-09-01', projects, today)
+    const c = parseCapture('pay invoice 2026-09-01', today)
     expect(c.due).toBe('2026-09-01')
     expect(c.title).toBe('pay invoice')
   })
 
-  it('still finds due/project tokens across a newline (quick-capture is now multiline)', () => {
-    const input = 'order tile samples\nthu weymouth'
-    const c = parseCapture(input, projects, today)
+  it('still finds due tokens across a newline (quick-capture is now multiline)', () => {
+    const input = 'order tile samples\nthu'
+    const c = parseCapture(input, today)
 
     expect(c.due).toBe('2026-08-27')
-    expect(c.projectId).toBe('proj-weymouth')
     // The title is space-joined regardless of the newline in the source.
     expect(c.title).toBe('order tile samples')
 
