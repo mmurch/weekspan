@@ -1,0 +1,52 @@
+name: Build and publish to GitHub Pages
+
+# Publishes the single-file build (apps/web/dist-single/weekspan.html) so it can be
+# opened from a bookmark on any machine. Refresh the page to pick up a new build.
+# No backend: Pages only serves the static file; data stays in the user's synced folder.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      # typecheck + tests + single-file build + file:// probe, as documented in README
+      - run: npm run verify
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp apps/web/dist-single/weekspan.html _site/weekspan.html
+          cp apps/web/dist-single/weekspan.html _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
