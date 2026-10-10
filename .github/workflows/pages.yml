@@ -28,7 +28,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
         working-directory: apps/web
       # typecheck + tests + single-file build + file:// probe, as documented in README
       - run: npm run verify
