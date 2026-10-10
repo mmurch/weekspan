@@ -39,6 +39,7 @@ export type Action =
   | { kind: 'reorder'; dir: 'up' | 'down' }
   | { kind: 'nudgeDue'; dir: 'left' | 'right' }
   | { kind: 'newItem' }
+  | { kind: 'sort' }
   | { kind: 'escape' }
   | { kind: 'indent' }
   | { kind: 'outdent' }
@@ -74,6 +75,7 @@ export const KEYMAP: readonly KeyBinding[] = [
   { key: 'v', action: { kind: 'setDone' } },
   { key: 'x', action: { kind: 'clear' } },
   { key: 'n', action: { kind: 'newItem' } },
+  { key: 's', action: { kind: 'sort' } },
   { key: 'enter', action: { kind: 'cycle' } },
   { key: 'escape', action: { kind: 'escape' } },
   { key: 'arrowup', action: { kind: 'move', dir: 'up' } },
@@ -161,6 +163,12 @@ export function applyAction(
       // Item creation belongs to the hover-seam / Enter-split / quick-capture
       // interactions (handoff section 3), not the keymap — out of scope here.
       // Resolved so the binding exists and is testable, but it never writes.
+      return { weekspan: null, selection: sel }
+
+    case 'sort':
+      // Sort-by-date is a whole-list action the caller owns (it needs the
+      // notice for "already sorted"), so the reducer stays out of it — same
+      // shape as `newItem`. The binding exists and is testable; it never writes.
       return { weekspan: null, selection: sel }
   }
 }

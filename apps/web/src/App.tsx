@@ -358,6 +358,20 @@ function Workspace({
     [mutate],
   )
 
+  /** Sort-by-date, shared by the header button and the `S` shortcut. */
+  const handleSort = useCallback((): void => {
+    void mutate((w) => {
+      const sorted = sortByDate(w, today)
+      // null means already in order — `mutate` writes nothing, so a second
+      // press leaves no diff in a synced file.
+      if (!sorted) {
+        say('Already sorted by date.')
+        return null
+      }
+      return sorted
+    })
+  }, [mutate, today, say])
+
   /**
    * In Project view a drop means two things at once — which group the item now
    * belongs to, and where it sits in the single global rank spine. Neighbours are
@@ -463,6 +477,11 @@ function Workspace({
         setCaptureOpen(true)
         return
       }
+      if (action.kind === 'sort') {
+        e.preventDefault()
+        handleSort()
+        return
+      }
       // Enter on the ITEM column opens the title editor. The second Enter is
       // InlineEdit's own — it commits and clears `editing`, and because the
       // selection was never moved, the row drops straight back to selected.
@@ -479,7 +498,7 @@ function Workspace({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [weekspan, selection, today, mutate, undo, redo])
+  }, [weekspan, selection, today, mutate, undo, redo, handleSort])
 
   /**
    * Paste a URL with a row selected (and no editor open) and it is appended to
@@ -631,18 +650,7 @@ function Workspace({
                 }
               })
             }}
-            onSortByDate={() => {
-              void mutate((w) => {
-                const sorted = sortByDate(w, today)
-                // null means already in order — `mutate` writes nothing, so a
-                // second press leaves no diff in a synced file.
-                if (!sorted) {
-                  say('Already sorted by date.')
-                  return null
-                }
-                return sorted
-              })
-            }}
+            onSortByDate={handleSort}
             gripHandlers={gripHandlers}
             markHandlers={markHandlers}
             markDrag={dragState.markDrag}

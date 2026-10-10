@@ -22,6 +22,7 @@ export function ShortcutBar({
       <span>⌥↑↓ reorder</span>
       <span>⌥←→ move due</span>
       <span>N new</span>
+      <span>S sort</span>
       <span className={undoDepth === 0 ? 'ws-foot-dim' : ''}>⌘Z undo</span>
       <span className="ws-foot-spacer">{count} items</span>
       {/* Which build is this? Unanswerable otherwise — the app travels between

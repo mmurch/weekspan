@@ -32,6 +32,7 @@ describe('resolveKey — bindings', () => {
     ['v', false, { kind: 'setDone' }],
     ['x', false, { kind: 'clear' }],
     ['n', false, { kind: 'newItem' }],
+    ['s', false, { kind: 'sort' }],
     ['Escape', false, { kind: 'escape' }],
     ['ArrowUp', false, { kind: 'move', dir: 'up' }],
     ['ArrowDown', false, { kind: 'move', dir: 'down' }],
